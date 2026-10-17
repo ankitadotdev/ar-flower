@@ -1798,4 +1798,504 @@ class FlowerBloomApp {
                 heartFound = true;
                 this.heartCenterPos = hPos;
                 this.heartHoldTime += step;
-console.log("Procedural flowers engine ready.");
+                if (this.heartHoldTime >= this.heartHoldRequired) {
+                    this.heartHoldTime = 0;
+                    this.lastSnapTime = Date.now();
+                    this.showSignalToast('Two-Hand Heart Locked! 🫶', '🫶');
+                    this.sound.playChime(7, 0.35);
+                    const delay = this.timerDuration > 0 ? this.timerDuration : 3;
+                    this.startCountdown(delay, '🫶 Two-Hand Heart Locked!');
+                    return;
+                }
+            }
+        }
+        if (!heartFound) {
+            this.heartHoldTime = Math.max(0, this.heartHoldTime - step * 0.85);
+            if (this.heartHoldTime === 0) this.heartCenterPos = null;
+        }
+
+        // 4. Check Open Palm Gesture 🖐️
+        let palmFound = false;
+        if (this.openPalmEnabled) {
+            for (const hand of this.handLandmarks) {
+                const pPos = this.detectOpenPalm(hand);
+                if (pPos) {
+                    palmFound = true;
+                    this.palmHandPos = pPos;
+                    this.palmHoldTime += step;
+                    if (this.palmHoldTime >= this.palmHoldRequired) {
+                        this.palmHoldTime = 0;
+                        this.lastSnapTime = Date.now();
+                        this.showSignalToast('Open Palm Photo Locked! 🖐️', '🖐️');
+                        this.sound.playChime(4, 0.3);
+                        const delay = this.timerDuration > 0 ? this.timerDuration : 3;
+                        this.startCountdown(delay, '🖐️ Open Palm Locked!');
+                        return;
+                    }
+                    break;
+                }
+            }
+        }
+        if (!palmFound) {
+            this.palmHoldTime = Math.max(0, this.palmHoldTime - step * 0.85);
+            if (this.palmHoldTime === 0) this.palmHandPos = null;
+        }
+
+        // 5. Check Namaste Pose (Only if Pose-Hold is explicitly enabled)
+        let namasteFound = false;
+        if (this.poseHoldEnabled) {
+            const nPos = this.detectNamastePose();
+            if (nPos) {
+                namasteFound = true;
+                this.poseHoldTime += step;
+                if (this.poseHoldTime >= this.poseHoldRequired) {
+                    this.poseHoldTime = 0;
+                    this.lastSnapTime = Date.now();
+                    this.showSignalToast('Namaste Pose Locked!', '🙏');
+                    this.sound.playChime(6, 0.3);
+                    const delay = this.timerDuration > 0 ? this.timerDuration : 3;
+                    this.startCountdown(delay, '🙏 Namaste Pose Locked!');
+                    return;
+                }
+            }
+        }
+        if (!namasteFound) {
+            this.poseHoldTime = Math.max(0, this.poseHoldTime - step * 0.85);
+        }
+    }
+
+    // ----------------------------------------------------------------------
+    // 7. HUD Viewfinder & Lock Ring Renderers
+    // ----------------------------------------------------------------------
+    drawCameraFrameHUD() {
+        if (this.cameraFrameHoldTime <= 0 || !this.cameraFrameBox) return;
+        const ctx = this.ctx;
+        const b = this.cameraFrameBox;
+        const progress = Math.min(1, this.cameraFrameHoldTime / this.cameraFrameHoldRequired);
+
+        ctx.save();
+
+        if (b.type === 'box') {
+            // Two-hand camera frame box [ 📷 ]
+            ctx.strokeStyle = '#48dbfb';
+            ctx.lineWidth = 3.5;
+            ctx.shadowColor = 'rgba(72, 219, 251, 0.85)';
+            ctx.shadowBlur = 14;
+
+            const cornerLen = Math.min(32, b.w * 0.22, b.h * 0.22);
+
+            // Top-Left corner
+            ctx.beginPath();
+            ctx.moveTo(b.x, b.y + cornerLen);
+            ctx.lineTo(b.x, b.y);
+            ctx.lineTo(b.x + cornerLen, b.y);
+            ctx.stroke();
+
+            // Top-Right corner
+            ctx.beginPath();
+            ctx.moveTo(b.x + b.w - cornerLen, b.y);
+            ctx.lineTo(b.x + b.w);
+            ctx.lineTo(b.x + b.w, b.y + cornerLen);
+            ctx.stroke();
+
+            // Bottom-Left corner
+            ctx.beginPath();
+            ctx.moveTo(b.x, b.y + b.h - cornerLen);
+            ctx.lineTo(b.x, b.y + b.h);
+            ctx.lineTo(b.x + cornerLen, b.y + b.h);
+            ctx.stroke();
+
+            // Bottom-Right corner
+            ctx.beginPath();
+            ctx.moveTo(b.x + b.w - cornerLen, b.y + b.h);
+            ctx.lineTo(b.x + b.w, b.y + b.h);
+            ctx.lineTo(b.x + b.w, b.y + b.h - cornerLen);
+            ctx.stroke();
+
+            // Center crosshair +
+            const cx = b.x + b.w * 0.5;
+            const cy = b.y + b.h * 0.5;
+            ctx.beginPath();
+            ctx.moveTo(cx - 10, cy);
+            ctx.lineTo(cx + 10, cy);
+            ctx.moveTo(cx, cy - 10);
+            ctx.lineTo(cx, cy + 10);
+            ctx.stroke();
+
+            // Header Badge (un-mirrored for legible text)
+            ctx.save();
+            ctx.translate(cx, b.y - 24);
+            ctx.scale(-1, 1);
+            ctx.fillStyle = 'rgba(12, 8, 24, 0.88)';
+            ctx.strokeStyle = 'rgba(72, 219, 251, 0.8)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.roundRect(-100, -14, 200, 28, 14);
+            ctx.fill();
+            ctx.stroke();
+
+            // Progress fill inside badge
+            ctx.fillStyle = 'rgba(72, 219, 251, 0.35)';
+            ctx.beginPath();
+            ctx.roundRect(-96, -10, 192 * progress, 20, 10);
+            ctx.fill();
+
+            ctx.font = '700 12px "Plus Jakarta Sans", sans-serif';
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowBlur = 0;
+            ctx.fillText(`📸 CAMERA FRAME: ${Math.round(progress * 100)}%`, 0, 0);
+            ctx.restore();
+
+        } else {
+            // Single-hand "L" Sign Lock Ring 👆
+            const px = b.x;
+            const py = Math.max(55, b.y - 20);
+
+            // Outer target brackets
+            ctx.strokeStyle = 'rgba(72, 219, 251, 0.55)';
+            ctx.lineWidth = 2;
+            const sz = 34;
+            ctx.beginPath();
+            ctx.moveTo(px - sz, py - sz + 12); ctx.lineTo(px - sz, py - sz); ctx.lineTo(px - sz + 12, py - sz);
+            ctx.moveTo(px + sz, py - sz + 12); ctx.lineTo(px + sz, py - sz); ctx.lineTo(px + sz - 12, py - sz);
+            ctx.moveTo(px - sz, py + sz - 12); ctx.lineTo(px - sz, py + sz); ctx.lineTo(px - sz + 12, py + sz);
+            ctx.moveTo(px + sz, py + sz - 12); ctx.lineTo(px + sz, py + sz); ctx.lineTo(px + sz - 12, py + sz);
+            ctx.stroke();
+
+            // Background circular track
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(px, py, 26, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Progress arc (Cyan Neon)
+            ctx.strokeStyle = '#48dbfb';
+            ctx.shadowColor = 'rgba(72, 219, 251, 0.9)';
+            ctx.shadowBlur = 14;
+            ctx.lineWidth = 4.5;
+            ctx.beginPath();
+            ctx.arc(px, py, 26, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * progress);
+            ctx.stroke();
+
+            // Center icon 👆
+            ctx.save();
+            ctx.translate(px, py);
+            ctx.scale(-1, 1);
+            ctx.font = '18px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('👆', 0, 0);
+            ctx.restore();
+
+            // Header Badge (un-mirrored)
+            ctx.save();
+            ctx.translate(px, py - 46);
+            ctx.scale(-1, 1);
+            ctx.fillStyle = 'rgba(12, 8, 24, 0.92)';
+            ctx.strokeStyle = 'rgba(72, 219, 251, 0.8)';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.roundRect(-80, -13, 160, 26, 13);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.font = '700 11px "Plus Jakarta Sans", sans-serif';
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowBlur = 0;
+            ctx.fillText(`👆 "L" SIGN: ${Math.round(progress * 100)}%`, 0, 0);
+            ctx.restore();
+        }
+
+        ctx.restore();
+    }
+
+    drawPeaceLockHUD() {
+        if (this.peaceHoldTime <= 0 || !this.peaceHandPos) return;
+        const ctx = this.ctx;
+        const p = this.peaceHandPos;
+        const progress = Math.min(1, this.peaceHoldTime / this.peaceHoldRequired);
+
+        ctx.save();
+        const my = Math.max(50, p.y - 45);
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(p.x, my, 26, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#2ed573';
+        ctx.shadowColor = 'rgba(46, 213, 115, 0.85)';
+        ctx.shadowBlur = 12;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(p.x, my, 26, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * progress);
+        ctx.stroke();
+
+        // Center peace icon
+        ctx.save();
+        ctx.translate(p.x, my);
+        ctx.scale(-1, 1);
+        ctx.font = '18px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('✌️', 0, 0);
+        ctx.restore();
+
+        // Text un-mirrored
+        ctx.save();
+        ctx.translate(p.x, my - 44);
+        ctx.scale(-1, 1);
+        ctx.fillStyle = 'rgba(12, 8, 24, 0.88)';
+        ctx.strokeStyle = 'rgba(46, 213, 115, 0.7)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(-75, -12, 150, 24, 12);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = '700 11px "Plus Jakarta Sans", sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowBlur = 0;
+        ctx.fillText(`✌️ PHOTO LOCK: ${Math.round(progress * 100)}%`, 0, 0);
+        ctx.restore();
+
+        ctx.restore();
+    }
+
+    drawHeartLockHUD() {
+        if (this.heartHoldTime <= 0 || !this.heartCenterPos) return;
+        const ctx = this.ctx;
+        const p = this.heartCenterPos;
+        const progress = Math.min(1, this.heartHoldTime / this.heartHoldRequired);
+
+        ctx.save();
+        const my = p.y;
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(p.x, my, 34, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#ff4d88';
+        ctx.shadowColor = 'rgba(255, 77, 136, 0.9)';
+        ctx.shadowBlur = 16;
+        ctx.lineWidth = 4.5;
+        ctx.beginPath();
+        ctx.arc(p.x, my, 34, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * progress);
+        ctx.stroke();
+
+        // Pulsing heart inside lock ring
+        ctx.save();
+        ctx.translate(p.x, my);
+        ctx.scale(-1, 1);
+        ctx.font = '24px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('💖', 0, 0);
+        ctx.restore();
+
+        // Text un-mirrored
+        ctx.save();
+        ctx.translate(p.x, my - 50);
+        ctx.scale(-1, 1);
+        ctx.fillStyle = 'rgba(12, 8, 24, 0.92)';
+        ctx.strokeStyle = 'rgba(255, 77, 136, 0.85)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.roundRect(-85, -13, 170, 26, 13);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = '700 11px "Plus Jakarta Sans", sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowBlur = 0;
+        ctx.fillText(`🫶 HEART LOCK: ${Math.round(progress * 100)}%`, 0, 0);
+        ctx.restore();
+
+        ctx.restore();
+    }
+
+    drawPalmLockHUD() {
+        if (this.palmHoldTime <= 0 || !this.palmHandPos) return;
+        const ctx = this.ctx;
+        const p = this.palmHandPos;
+        const progress = Math.min(1, this.palmHoldTime / this.palmHoldRequired);
+
+        ctx.save();
+        const my = p.y;
+
+        // Background ring
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(p.x, my, 32, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Progress arc (Vibrant Gold/Amber)
+        ctx.strokeStyle = '#ffa502';
+        ctx.shadowColor = 'rgba(255, 165, 2, 0.9)';
+        ctx.shadowBlur = 16;
+        ctx.lineWidth = 4.5;
+        ctx.beginPath();
+        ctx.arc(p.x, my, 32, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * progress);
+        ctx.stroke();
+
+        // Center hand icon
+        ctx.save();
+        ctx.translate(p.x, my);
+        ctx.scale(-1, 1);
+        ctx.font = '22px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🖐️', 0, 0);
+        ctx.restore();
+
+        // Header Badge (un-mirrored)
+        ctx.save();
+        ctx.translate(p.x, my - 48);
+        ctx.scale(-1, 1);
+        ctx.fillStyle = 'rgba(12, 8, 24, 0.92)';
+        ctx.strokeStyle = 'rgba(255, 165, 2, 0.85)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.roundRect(-85, -13, 170, 26, 13);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = '700 11px "Plus Jakarta Sans", sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowBlur = 0;
+        ctx.fillText(`🖐️ PALM PHOTO: ${Math.round(progress * 100)}%`, 0, 0);
+        ctx.restore();
+
+        ctx.restore();
+    }
+
+    drawNamasteLockHUD() {
+        if (!this.poseHoldEnabled || this.poseHoldTime <= 0) return;
+        const ctx = this.ctx;
+        const progress = Math.min(1, this.poseHoldTime / this.poseHoldRequired);
+        const mx = this.canvas.width * 0.5;
+        const my = 42;
+
+        ctx.save();
+        ctx.translate(this.canvas.width, 0);
+        ctx.scale(-1, 1);
+
+        ctx.fillStyle = 'rgba(16, 10, 28, 0.88)';
+        ctx.strokeStyle = 'rgba(255, 77, 136, 0.6)';
+        ctx.lineWidth = 1.5;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = 'rgba(255, 77, 136, 0.5)';
+        ctx.beginPath();
+        ctx.roundRect(mx - 100, my - 16, 200, 32, 16);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = 'rgba(255, 77, 136, 0.85)';
+        ctx.beginPath();
+        ctx.roundRect(mx - 94, my - 10, 188 * progress, 20, 10);
+        ctx.fill();
+
+        ctx.font = '700 12px "Plus Jakarta Sans", sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowBlur = 0;
+        ctx.fillText(`🙏 NAMASTE: ${Math.round(progress * 100)}%`, mx, my);
+        ctx.restore();
+    }
+
+    initVoiceRecognition() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            console.warn('Web Speech API not supported in this browser.');
+            this.showSignalToast('Voice recognition not supported in this browser', '⚠️');
+            return false;
+        }
+        try {
+            const rec = new SpeechRecognition();
+            rec.continuous = true;
+            rec.interimResults = false;
+            rec.lang = 'en-US';
+
+            const triggerWords = ['cheese', 'photo', 'click', 'smile', 'capture', 'shoot', 'pic', 'tasveer', 'khicho', 'kheecho'];
+
+            rec.onresult = (e) => {
+                if (this.isCountingDown) return;
+                const last = e.results.length - 1;
+                const phrase = e.results[last][0].transcript.trim().toLowerCase();
+                for (const word of triggerWords) {
+                    if (phrase.includes(word)) {
+                        this.showSignalToast(`Heard "${word.toUpperCase()}"!`, '🎙️');
+                        const delay = this.timerDuration > 0 ? this.timerDuration : 3;
+                        this.startCountdown(delay, `🎙️ Heard "${word}"`);
+                        break;
+                    }
+                }
+            };
+
+            rec.onerror = (e) => {
+                console.warn('Speech recognition error:', e.error);
+            };
+
+            rec.onend = () => {
+                if (this.voiceTriggerEnabled) {
+                    try { rec.start(); } catch (err) {}
+                }
+            };
+
+            this.speechRecognition = rec;
+            return true;
+        } catch (err) {
+            console.warn('Voice recognition init failed:', err);
+            return false;
+        }
+    }
+
+    toggleVoice(enable) {
+        this.voiceTriggerEnabled = enable;
+        if (enable) {
+            if (!this.speechRecognition) {
+                this.initVoiceRecognition();
+            }
+            try {
+                this.speechRecognition?.start();
+                this.showSignalToast('Voice Active: Say "Cheese" or "Photo"!', '🎙️');
+            } catch (e) {
+                console.warn('Speech start warning:', e);
+            }
+        } else {
+            try {
+                this.speechRecognition?.stop();
+                this.showSignalToast('Voice Trigger Disabled', '🔇');
+            } catch (e) {}
+        }
+    }
+
+    resize() {
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+        for (const p of this.particles) {
+            p.cw = this.canvas.width;
+            p.ch = this.canvas.height;
+        }
+    }
+
+    initParticles() {
+        this.particles = [];
+        for (let i = 0; i < 65; i++) {
+console.log("Creatures & particle physics ready.");
