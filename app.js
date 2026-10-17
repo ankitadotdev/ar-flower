@@ -2698,4 +2698,404 @@ class FlowerBloomApp {
 
     // 3. LOTUS (Sacred Radiant Petals & Golden Center Seed Pod)
     drawLotus(ctx, scale, bloom, windAngle) {
-console.log("MediaPipe tracking and anchor ready.");
+        const adjustedScale = scale * (1.0 + bloom * 0.25);
+        const hue = 325; // Gentle sacred pink
+        const sat = 85;
+        const light = 65;
+
+        const maxPetalLen = 78 * adjustedScale;
+        const tiers = [
+            { count: 12, lenMul: 1.0, spread: 1.0, lOffset: -8 }, // Outer wide tier
+            { count: 8, lenMul: 0.82, spread: 0.75, lOffset: 0 },  // Mid tier
+            { count: 6, lenMul: 0.65, spread: 0.45, lOffset: 8 }   // Inner cupped tier
+        ];
+
+        tiers.forEach((tier, tIdx) => {
+            const spreadAngle = (0.2 + bloom * 0.8) * tier.spread;
+            for (let i = 0; i < tier.count; i++) {
+                const baseA = ((i / tier.count) * 2 - 1) * Math.PI * 0.48 * spreadAngle;
+                const flutter = this.noise.get(this.time * 0.9 + i, tIdx + 2) * 0.05 * bloom;
+                const angle = baseA + flutter + windAngle * 0.08;
+                const len = maxPetalLen * tier.lenMul;
+                const wid = len * 0.32 * (0.4 + bloom * 0.6);
+
+                ctx.save();
+                ctx.rotate(angle);
+
+                const grad = ctx.createLinearGradient(0, 0, 0, -len);
+                grad.addColorStop(0, '#ffffff'); // White glowing base
+                grad.addColorStop(0.35, `hsla(${hue}, ${sat}%, ${light + tier.lOffset}%, 0.9)`);
+                grad.addColorStop(1, `hsla(${hue - 15}, 95%, ${light - 10 + tier.lOffset}%, 0.95)`);
+
+                ctx.fillStyle = grad;
+                ctx.shadowBlur = 10 + bloom * 16;
+                ctx.shadowColor = `hsla(${hue}, 100%, 75%, 0.35)`;
+
+                // Lotus pointed petal shape
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.bezierCurveTo(-wid, -len * 0.4, -wid * 0.8, -len * 0.85, 0, -len);
+                ctx.bezierCurveTo(wid * 0.8, -len * 0.85, wid, -len * 0.4, 0, 0);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        });
+
+        // Golden Seed Pod Receptacle
+        if (bloom > 0.1) {
+            ctx.save();
+            ctx.shadowBlur = 14;
+            ctx.shadowColor = 'rgba(255, 200, 50, 0.6)';
+            ctx.fillStyle = `rgba(235, 190, 45, ${bloom})`;
+            ctx.beginPath();
+            ctx.ellipse(0, -maxPetalLen * 0.15, 14 * adjustedScale * bloom, 9 * adjustedScale * bloom, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Pod Seed holes
+            ctx.fillStyle = 'rgba(120, 80, 10, 0.7)';
+            for (let s = 0; s < 7; s++) {
+                const sa = (s / 7) * Math.PI * 2;
+                const sr = 6 * adjustedScale * bloom;
+                ctx.beginPath();
+                ctx.arc(Math.cos(sa) * sr, -maxPetalLen * 0.15 + Math.sin(sa) * sr * 0.6, 1.8 * adjustedScale, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+    }
+
+    // 4. SUNFLOWER (Radiant Golden Ray Florets & Phyllotaxis Seed Disc)
+    drawSunflower(ctx, scale, bloom, windAngle) {
+        const adjustedScale = scale * (1.0 + bloom * 0.22);
+        const rayCount = 24;
+        const maxLen = 74 * adjustedScale;
+        const discR = 32 * adjustedScale;
+
+        // Two layers of yellow rays
+        for (let layer = 0; layer < 2; layer++) {
+            const offsetA = layer === 1 ? (Math.PI / rayCount) : 0;
+            const layerScale = layer === 1 ? 0.9 : 1.0;
+
+            for (let i = 0; i < rayCount; i++) {
+                const angle = (i / rayCount) * Math.PI * 2 + offsetA;
+                const flutter = this.noise.get(this.time * 0.7 + i, layer) * 0.04 * bloom;
+                const len = maxLen * layerScale * (0.35 + bloom * 0.65);
+                const wid = 14 * adjustedScale * (0.4 + bloom * 0.6);
+
+                ctx.save();
+                ctx.rotate(angle + flutter + windAngle * 0.03);
+                ctx.translate(0, -discR * 0.7);
+
+                const grad = ctx.createLinearGradient(0, 0, 0, -len);
+                grad.addColorStop(0, '#ff9900');
+                grad.addColorStop(0.5, '#ffcc00');
+                grad.addColorStop(1, '#ffea6c');
+
+                ctx.fillStyle = grad;
+                ctx.shadowBlur = 8 + bloom * 12;
+                ctx.shadowColor = 'rgba(255, 180, 0, 0.45)';
+
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.bezierCurveTo(-wid * 0.6, -len * 0.5, -wid * 0.2, -len * 0.9, 0, -len);
+                ctx.bezierCurveTo(wid * 0.2, -len * 0.9, wid * 0.6, -len * 0.5, 0, 0);
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // Textured Seed Disc (Fibonacci Phyllotaxis Spiral)
+        ctx.save();
+        const discGrad = ctx.createRadialGradient(0, 0, 4, 0, 0, discR);
+        discGrad.addColorStop(0, '#2d1804');
+        discGrad.addColorStop(0.7, '#4b2e0e');
+        discGrad.addColorStop(1, '#664016');
+        ctx.fillStyle = discGrad;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+        ctx.beginPath();
+        ctx.arc(0, 0, discR, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Seed dots
+        const seedCount = Math.floor(65 * (0.3 + bloom * 0.7));
+        const goldenRatio = 2.39996; // ~137.5 degrees
+        for (let s = 1; s <= seedCount; s++) {
+            const a = s * goldenRatio;
+            const r = Math.sqrt(s / 65) * (discR - 4);
+            const sx = Math.cos(a) * r;
+            const sy = Math.sin(a) * r;
+
+            ctx.fillStyle = s % 2 === 0 ? 'rgba(255, 190, 70, 0.65)' : 'rgba(100, 60, 20, 0.8)';
+            ctx.beginPath();
+            ctx.arc(sx, sy, 1.6 * adjustedScale, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    // 5. SAKURA / CHERRY BLOSSOM (Notched Delicate Pink Petals)
+    drawSakura(ctx, scale, bloom, windAngle) {
+        const adjustedScale = scale * (1.05 + bloom * 0.25);
+        const petalCount = 5;
+        const maxLen = 65 * adjustedScale;
+
+        // 5 Cherry Blossom Petals
+        for (let i = 0; i < petalCount; i++) {
+            const angle = (i / petalCount) * Math.PI * 2 + (windAngle * 0.04);
+            const flutter = this.noise.get(this.time + i * 2, 6) * 0.05 * bloom;
+            const len = maxLen * (0.35 + bloom * 0.65);
+            const wid = len * 0.5;
+
+            ctx.save();
+            ctx.rotate(angle + flutter);
+
+            const grad = ctx.createLinearGradient(0, 0, 0, -len);
+            grad.addColorStop(0, '#ff4081');  // Deep magenta center
+            grad.addColorStop(0.4, '#ff80ab'); // Soft blush
+            grad.addColorStop(0.9, '#ffffff'); // White tips
+            grad.addColorStop(1, '#ffc4d6');
+
+            ctx.fillStyle = grad;
+            ctx.shadowBlur = 12 + bloom * 16;
+            ctx.shadowColor = 'rgba(255, 100, 160, 0.35)';
+
+            // Petal with the famous Sakura cleft/notch at the tip
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.bezierCurveTo(-wid * 0.8, -len * 0.4, -wid, -len * 0.85, -wid * 0.4, -len);
+            ctx.quadraticCurveTo(0, -len * 0.85, wid * 0.4, -len); // Center heart notch
+            ctx.bezierCurveTo(wid, -len * 0.85, wid * 0.8, -len * 0.4, 0, 0);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // Delicate Crimson Center Eye & Slender Radiating Stamens
+        if (bloom > 0.15) {
+            ctx.save();
+            ctx.fillStyle = `rgba(230, 20, 90, ${bloom * 0.9})`;
+            ctx.beginPath();
+            ctx.arc(0, 0, 8 * adjustedScale, 0, Math.PI * 2);
+            ctx.fill();
+
+            const stamenCount = 12;
+            for (let s = 0; s < stamenCount; s++) {
+                const a = (s / stamenCount) * Math.PI * 2 + this.time * 0.3;
+                const r = 18 * adjustedScale * bloom;
+                const sx = Math.cos(a) * r;
+                const sy = Math.sin(a) * r;
+
+                ctx.strokeStyle = `rgba(255, 120, 180, ${bloom * 0.8})`;
+                ctx.lineWidth = 1.2 * adjustedScale;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(sx, sy);
+                ctx.stroke();
+
+                ctx.fillStyle = `rgba(255, 230, 100, ${bloom})`;
+                ctx.beginPath();
+                ctx.arc(sx, sy, 2.2 * adjustedScale, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+    }
+
+    // Master Flower Head Switcher
+    drawFlowerHead(cx, cy, bloom, windAngle, scale) {
+        if (scale < 0.05) return;
+        const ctx = this.ctx;
+
+        ctx.save();
+        ctx.translate(cx, cy);
+
+        // Ambient Background Glow Aura
+        const glowR = (75 + bloom * 130) * scale;
+        if (bloom > 0.02) {
+            const glow = ctx.createRadialGradient(0, -glowR * 0.3, 0, 0, -glowR * 0.3, glowR);
+            glow.addColorStop(0, `rgba(255, 80, 130, ${0.45 * bloom})`);
+            glow.addColorStop(0.5, `rgba(255, 50, 100, ${0.2 * bloom})`);
+            glow.addColorStop(1, 'rgba(255, 30, 70, 0)');
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(0, -glowR * 0.3, glowR, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Delegate to active species renderer
+        switch (this.species) {
+            case 'rose':
+                this.drawRose(ctx, scale, bloom, windAngle);
+                break;
+            case 'lotus':
+                this.drawLotus(ctx, scale, bloom, windAngle);
+                break;
+            case 'sunflower':
+                this.drawSunflower(ctx, scale, bloom, windAngle);
+                break;
+            case 'sakura':
+                this.drawSakura(ctx, scale, bloom, windAngle);
+                break;
+            case 'tulip':
+            default:
+                this.drawTulip(ctx, scale, bloom, windAngle);
+                break;
+        }
+
+        ctx.restore();
+    }
+
+    // ----------------------------------------------------------------------
+    // STEM & BRANCHES (Ground Rooted Architecture)
+    // ----------------------------------------------------------------------
+    drawStem(baseX, baseY, height, windAngle) {
+        const ctx = this.ctx;
+        const segs = 24;
+        const segH = height / segs;
+
+        const pts = [{ x: baseX, y: baseY }];
+        for (let i = 1; i <= segs; i++) {
+            const t = i / segs;
+            const windBend = windAngle * t * t * 40;
+            const sway = this.noise.get(this.time * 0.6 + i * 0.25, 0) * 10 * t;
+            pts.push({
+                x: baseX + windBend + sway,
+                y: baseY - segH * i,
+            });
+        }
+
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // Outer glow
+        ctx.lineWidth = 6;
+        ctx.strokeStyle = 'rgba(40, 120, 35, 0.25)';
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = 'rgba(80, 180, 60, 0.3)';
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.stroke();
+
+        // Core stem
+        ctx.lineWidth = 3.5;
+        ctx.strokeStyle = '#3a8a30';
+        ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.stroke();
+
+        this.drawLeaves(pts);
+        ctx.restore();
+
+        return { tip: pts[pts.length - 1], pts };
+    }
+
+    drawLeaves(stemPts) {
+        const ctx = this.ctx;
+        const positions = [0.25, 0.45, 0.65];
+
+        for (let li = 0; li < positions.length; li++) {
+            const idx = Math.floor(positions[li] * (stemPts.length - 1));
+            const pt = stemPts[idx];
+            const side = li % 2 === 0 ? 1 : -1;
+            const len = 22 + this.growth * 18;
+            const angle = side * (0.45 + this.noise.get(this.time * 0.6 + li * 3, 2) * 0.2);
+
+            ctx.save();
+            ctx.translate(pt.x, pt.y);
+            ctx.rotate(angle);
+
+            const grad = ctx.createLinearGradient(0, 0, len, 0);
+            grad.addColorStop(0, 'rgba(55, 140, 45, 0.85)');
+            grad.addColorStop(1, 'rgba(75, 170, 60, 0.45)');
+            ctx.fillStyle = grad;
+            ctx.shadowBlur = 4;
+            ctx.shadowColor = 'rgba(80, 200, 60, 0.25)';
+
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.quadraticCurveTo(len * 0.5, -10, len, -1);
+            ctx.quadraticCurveTo(len * 0.5, 10, 0, 0);
+            ctx.fill();
+
+            // Leaf vein
+            ctx.strokeStyle = 'rgba(90, 180, 70, 0.35)';
+            ctx.lineWidth = 0.8;
+            ctx.beginPath();
+            ctx.moveTo(3, 0);
+            ctx.lineTo(len * 0.8, 0);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+    }
+
+    drawBranch(startX, startY, baseAngle, length, windAngle, scale) {
+        const ctx = this.ctx;
+        const segs = 12;
+        const segL = length / segs;
+        const pts = [{ x: startX, y: startY }];
+
+        for (let i = 1; i <= segs; i++) {
+            const t = i / segs;
+            const windBend = windAngle * t * t * 15;
+            const sway = this.noise.get(this.time * 0.8 + i * 0.3, 5) * 4 * t;
+            const angle = baseAngle + windBend * 0.02 + sway * 0.01;
+            pts.push({
+                x: pts[pts.length - 1].x + Math.cos(angle) * segL + windBend * 0.3,
+                y: pts[pts.length - 1].y + Math.sin(angle) * segL
+            });
+        }
+
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        ctx.lineWidth = 4 * scale;
+        ctx.strokeStyle = 'rgba(40, 120, 35, 0.2)';
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.stroke();
+
+        ctx.lineWidth = 2.5 * scale;
+        ctx.strokeStyle = '#3a8a30';
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.stroke();
+
+        ctx.restore();
+        return pts[pts.length - 1];
+    }
+
+    // ----------------------------------------------------------------------
+    // PALM AR MODE (FLOWER GROWS FROM HAND PALM)
+    // ----------------------------------------------------------------------
+    drawPalmFlower(hand, totalWind) {
+        const ctx = this.ctx;
+        const cw = this.canvas.width;
+        const ch = this.canvas.height;
+
+        // Palm center and wrist landmarks
+        const palm = this.palmCenter(hand);
+        const wrist = hand[0];
+        const mcp = hand[9];
+
+        const px = palm.x * cw;
+        const py = palm.y * ch;
+        const wx = wrist.x * cw;
+        const wy = wrist.y * ch;
+
+        // Upward vector along palm
+        const palmAngle = Math.atan2(py - wy, px - wx) - Math.PI / 2;
+        const flowerScale = 1.2 * (0.4 + this.growth * 0.8);
+        const stemLength = (60 + this.growth * 110);
+
+console.log("Snapshot merger ready.");
