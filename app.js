@@ -998,4 +998,804 @@ class FlowerBloomApp {
 
         // Physics & Audio
         this.noise = new OrganicNoise();
-console.log("Audio and noise engines ready.");
+        this.sound = new SoundEngine();
+
+        // Gesture state (smooth interpolated)
+        this.bloom = 0.3;
+        this.growth = 0.5;
+        this.windForce = 0;
+
+        // Targets
+        this.targetBloom = 0.3;
+        this.targetGrowth = 0.5;
+        this.targetWindForce = 0;
+        this.prevHands = {};
+
+        // Super Bloom Celebration state
+        this.hasFiredSuperBloom = false;
+
+        // Features Configuration
+        this.species = 'tulip'; // 'tulip' | 'rose' | 'lotus' | 'sunflower' | 'sakura'
+        this.anchorMode = 'ground'; // 'ground' | 'palm'
+        this.isCameraActive = false;
+        this.isManualActive = false;
+
+        // Hands-Free Photo Capture System (Deliberate & Unique Gestures)
+        this.handsFreeActive = true;
+        this.cameraFrameEnabled = true; // "L" sign (1 hand) or Camera viewfinder box (2 hands)
+        this.gestureTriggerEnabled = true; // ✌️ Peace sign
+        this.heartGestureEnabled = true; // 🫶 Two-hand heart pose
+        this.openPalmEnabled = true; // 🖐️ Open palm gesture
+        this.voiceTriggerEnabled = false;
+        this.poseHoldEnabled = false; // OFF by default so raising hands to grow flowers NEVER triggers photos!
+        this.timerDuration = 3; // 0 (off), 3, 5, 10
+        this.isCountingDown = false;
+        this.countdownInterval = null;
+        this.signalToastTimeout = null;
+
+        // Dedicated deliberate hold timers (responsive ~0.8s lock)
+        this.cameraFrameHoldTime = 0;
+        this.cameraFrameHoldRequired = 0.80;
+        this.cameraFrameBox = null;
+
+        this.peaceHoldTime = 0;
+        this.peaceHoldRequired = 0.80;
+        this.peaceHandPos = null;
+
+        this.heartHoldTime = 0;
+        this.heartHoldRequired = 0.80;
+        this.heartCenterPos = null;
+
+        this.palmHoldTime = 0;
+        this.palmHoldRequired = 0.80;
+        this.palmHandPos = null;
+
+        this.poseHoldTime = 0;
+        this.poseHoldRequired = 1.3;
+        this.lastSnapTime = 0;
+        this.prevPosePositions = {};
+        this.speechRecognition = null;
+
+        // MediaPipe state
+        this.handLandmarks = [];
+        this.handHandedness = [];
+        this.handsDetected = 0;
+
+        // Object pools
+        this.particles = [];
+        this.fairyDusts = [];
+        this.burstPetals = [];
+        this.butterflies = [];
+        this.bees = [];
+        this.showButterfliesAndBees = true;
+
+        // Time
+        this.time = 0;
+        this.lastTimestamp = 0;
+
+        // Flower tip cache for butterfly landing
+        this.mainFlowerPos = { x: 0, y: 0 };
+
+        // Initialize Systems
+        this.initDOM();
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+
+        this.initParticles();
+        this.initButterflies();
+        this.initHandTracking();
+
+        // Animation Loop
+        requestAnimationFrame((ts) => this.animate(ts));
+    }
+
+    // ----------------------------------------------------------------------
+    // UI & DOM Interactions
+    // ----------------------------------------------------------------------
+    initDOM() {
+        // Species Selector Buttons
+        const flowerBtns = document.querySelectorAll('.flower-btn');
+        flowerBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                flowerBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.species = btn.dataset.flower;
+                this.sound.playChime(3, 0.25);
+            });
+        });
+
+        // Mode Toggle Button (Ground vs Palm AR)
+        const modeBtn = document.getElementById('modeToggleBtn');
+        const modeIcon = document.getElementById('modeIcon');
+        const modeLabel = document.getElementById('modeLabel');
+        modeBtn.addEventListener('click', () => {
+            if (this.anchorMode === 'ground') {
+                this.anchorMode = 'palm';
+                modeIcon.textContent = '✋';
+                modeLabel.textContent = 'Palm AR';
+                modeBtn.classList.add('active-mode');
+            } else {
+                this.anchorMode = 'ground';
+                modeIcon.textContent = '🌱';
+                modeLabel.textContent = 'Ground';
+                modeBtn.classList.remove('active-mode');
+            }
+            this.sound.playChime(5, 0.2);
+        });
+
+        // Audio Toggle
+        const soundBtn = document.getElementById('soundToggleBtn');
+        const soundIcon = document.getElementById('soundIcon');
+        soundBtn.addEventListener('click', () => {
+            const isEnabled = this.sound.toggle();
+            soundIcon.textContent = isEnabled ? '🔔' : '🔇';
+            soundBtn.style.borderColor = isEnabled ? 'rgba(255, 130, 180, 0.6)' : '';
+            if (isEnabled) this.sound.playChime(7, 0.3);
+        });
+
+        // Hands-Free Drawer Toggle
+        const hfBtn = document.getElementById('handsFreeBtn');
+        const hfDrawer = document.getElementById('handsFreeDrawer');
+        const hfClose = document.getElementById('handsFreeClose');
+        if (hfBtn && hfDrawer) {
+            hfBtn.addEventListener('click', () => {
+                hfDrawer.classList.toggle('open');
+                this.manualDrawer?.classList.remove('open');
+            });
+            hfClose?.addEventListener('click', () => {
+                hfDrawer.classList.remove('open');
+            });
+        }
+
+        // Self-Timer Quick Button (Cycles 0 -> 3 -> 5 -> 10 -> 0)
+        const timerBtn = document.getElementById('timerToggleBtn');
+        if (timerBtn) {
+            timerBtn.addEventListener('click', () => {
+                const cycle = [0, 3, 5, 10];
+                const nextIdx = (cycle.indexOf(this.timerDuration) + 1) % cycle.length;
+                this.setTimerDuration(cycle[nextIdx]);
+            });
+        }
+
+        // Hands-Free Feature Toggles
+        const frameCheck = document.getElementById('toggleCameraFrame');
+        if (frameCheck) {
+            frameCheck.checked = this.cameraFrameEnabled;
+            frameCheck.addEventListener('change', (e) => {
+                this.cameraFrameEnabled = e.target.checked;
+                this.updateHandsFreeStatus();
+                if (this.cameraFrameEnabled) {
+                    this.showSignalToast('Camera Frame Active! Form [ 📷 ] with hands', '📸');
+                }
+            });
+        }
+
+        const gestureCheck = document.getElementById('toggleGestureTrigger');
+        if (gestureCheck) {
+            gestureCheck.checked = this.gestureTriggerEnabled;
+            gestureCheck.addEventListener('change', (e) => {
+                this.gestureTriggerEnabled = e.target.checked;
+                this.updateHandsFreeStatus();
+                if (this.gestureTriggerEnabled) {
+                    this.showSignalToast('Peace Gesture Active! Hold ✌️ for 1.2s to snap', '✌️');
+                }
+            });
+        }
+
+        const heartCheck = document.getElementById('toggleHeartGesture');
+        if (heartCheck) {
+            heartCheck.checked = this.heartGestureEnabled;
+            heartCheck.addEventListener('change', (e) => {
+                this.heartGestureEnabled = e.target.checked;
+                this.updateHandsFreeStatus();
+                if (this.heartGestureEnabled) {
+                    this.showSignalToast('Two-Hand Heart Active! Join 🫶 hands', '🫶');
+                }
+            });
+        }
+
+        const palmCheck = document.getElementById('toggleOpenPalm');
+        if (palmCheck) {
+            palmCheck.checked = this.openPalmEnabled;
+            palmCheck.addEventListener('change', (e) => {
+                this.openPalmEnabled = e.target.checked;
+                this.updateHandsFreeStatus();
+                if (this.openPalmEnabled) {
+                    this.showSignalToast('Open Palm Active! Show 🖐️ to snap photo', '🖐️');
+                }
+            });
+        }
+
+        const voiceCheck = document.getElementById('toggleVoiceTrigger');
+        if (voiceCheck) {
+            voiceCheck.addEventListener('change', (e) => {
+                this.toggleVoice(e.target.checked);
+                this.updateHandsFreeStatus();
+            });
+        }
+
+        const poseCheck = document.getElementById('togglePoseHold');
+        if (poseCheck) {
+            poseCheck.checked = this.poseHoldEnabled;
+            poseCheck.addEventListener('change', (e) => {
+                this.poseHoldEnabled = e.target.checked;
+                this.updateHandsFreeStatus();
+                if (this.poseHoldEnabled) {
+                    this.showSignalToast('Bloom Pose Hold: Active! (Hold steady 2s)', '🌸');
+                }
+            });
+        }
+
+        // Allow clicking anywhere on an hf-option row to toggle its switch
+        const hfRows = document.querySelectorAll('.hf-option[data-target]');
+        hfRows.forEach(row => {
+            row.addEventListener('click', (e) => {
+                if (e.target.closest('.switch-wrapper')) return;
+                const targetId = row.dataset.target;
+                const input = document.getElementById(targetId);
+                if (input) {
+                    input.checked = !input.checked;
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            });
+        });
+
+        // Timer Chips
+        const chips = document.querySelectorAll('.timer-chip');
+        chips.forEach(chip => {
+            chip.addEventListener('click', () => {
+                const duration = parseInt(chip.dataset.timer, 10);
+                this.setTimerDuration(duration);
+            });
+        });
+
+        // Snapshot Button: if timer is active, start countdown!
+        const snapshotBtn = document.getElementById('snapshotBtn');
+        if (snapshotBtn) {
+            snapshotBtn.addEventListener('click', () => {
+                if (this.timerDuration > 0) {
+                    this.startCountdown(this.timerDuration, '📸 Timer Snapshot');
+                } else {
+                    this.takeSnapshot();
+                }
+            });
+        }
+
+        // Countdown Cancel Button
+        const cancelBtn = document.getElementById('countdownCancelBtn');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => this.cancelCountdown());
+        }
+
+        // Manual Controls Drawer Toggle
+        const manualToggle = document.getElementById('manualControlsToggle');
+        const drawerClose = document.getElementById('drawerClose');
+        manualToggle.addEventListener('click', () => {
+            this.manualDrawer.classList.toggle('open');
+            this.isManualActive = this.manualDrawer.classList.contains('open');
+            hfDrawer?.classList.remove('open');
+        });
+        drawerClose.addEventListener('click', () => {
+            this.manualDrawer.classList.remove('open');
+            this.isManualActive = false;
+        });
+
+        // Manual Sliders Input
+        const bSlider = document.getElementById('manualBloomSlider');
+        const gSlider = document.getElementById('manualGrowthSlider');
+        const wSlider = document.getElementById('manualWindSlider');
+        const bDisp = document.getElementById('valBloom');
+        const gDisp = document.getElementById('valGrowth');
+        const wDisp = document.getElementById('valWind');
+
+        bSlider.addEventListener('input', (e) => {
+            this.targetBloom = parseFloat(e.target.value);
+            bDisp.textContent = `${Math.round(this.targetBloom * 100)}%`;
+            this.isManualActive = true;
+        });
+        gSlider.addEventListener('input', (e) => {
+            this.targetGrowth = parseFloat(e.target.value);
+            gDisp.textContent = `${Math.round(this.targetGrowth * 100)}%`;
+            this.isManualActive = true;
+        });
+        wSlider.addEventListener('input', (e) => {
+            this.targetWindForce = parseFloat(e.target.value);
+            wDisp.textContent = this.targetWindForce.toFixed(2);
+            this.isManualActive = true;
+        });
+
+        // Butterflies & Bees Toggle Checkbox
+        const faunaCheckbox = document.getElementById('toggleButterfliesCheckbox');
+        if (faunaCheckbox) {
+            faunaCheckbox.addEventListener('change', (e) => {
+                this.showButterfliesAndBees = e.target.checked;
+            });
+        }
+
+        // Canvas Mouse Drag Wind Gusts
+        let isMouseDown = false;
+        let lastMouseX = 0;
+        window.addEventListener('mousedown', (e) => {
+            if (e.target.closest('button') || e.target.closest('input')) return;
+            isMouseDown = true;
+            lastMouseX = e.clientX;
+            this.sound.init();
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (!isMouseDown) return;
+            const dx = (e.clientX - lastMouseX) * 0.05;
+            this.targetWindForce = Math.max(-1.5, Math.min(1.5, dx));
+            lastMouseX = e.clientX;
+        });
+        window.addEventListener('mouseup', () => {
+            isMouseDown = false;
+            this.targetWindForce *= 0.2;
+        });
+
+        // Keyboard Shortcut: Spacebar for snapshot, Escape to cancel
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && e.target.tagName !== 'INPUT' && !e.target.isContentEditable) {
+                e.preventDefault();
+                const delay = this.timerDuration > 0 ? this.timerDuration : 3;
+                this.startCountdown(delay, '⌨️ Spacebar Snapshot');
+            } else if (e.code === 'Escape') {
+                this.cancelCountdown();
+                hfDrawer?.classList.remove('open');
+                this.manualDrawer?.classList.remove('open');
+            }
+        });
+
+        // Instructions Dismiss
+        const dismissBtn = document.getElementById('dismissInstructions');
+        dismissBtn.addEventListener('click', () => {
+            this.instructionsEl.classList.add('hidden');
+        });
+
+        // Help Toggle to re-show instructions
+        const helpBtn = document.getElementById('helpToggle');
+        helpBtn.addEventListener('click', () => {
+            this.instructionsEl.classList.toggle('hidden');
+        });
+
+        // Skip Camera Button
+        const skipBtn = document.getElementById('skipCameraBtn');
+        skipBtn.addEventListener('click', () => {
+            this.loadingEl.classList.add('hidden');
+            this.manualDrawer.classList.add('open');
+            this.isManualActive = true;
+            this.targetGrowth = 0.85;
+            this.targetBloom = 0.65;
+        });
+
+        // Auto dismiss instructions after 9 seconds
+        setTimeout(() => {
+            this.instructionsEl?.classList.add('hidden');
+        }, 9000);
+    }
+
+    setTimerDuration(duration) {
+        this.timerDuration = duration;
+        const timerLabel = document.getElementById('timerLabel');
+        if (timerLabel) {
+            timerLabel.textContent = duration === 0 ? 'Off' : `${duration}s`;
+        }
+        const timerChips = document.querySelectorAll('.timer-chip');
+        timerChips.forEach(chip => {
+            chip.classList.toggle('active', parseInt(chip.dataset.timer, 10) === duration);
+        });
+        this.sound.playChime(4, 0.2);
+    }
+
+    updateHandsFreeStatus() {
+        const hfBtn = document.getElementById('handsFreeBtn');
+        const dot = hfBtn?.querySelector('.status-pulse-dot');
+        const isActive = this.cameraFrameEnabled || this.gestureTriggerEnabled || this.heartGestureEnabled || this.openPalmEnabled || this.voiceTriggerEnabled || this.poseHoldEnabled;
+        if (hfBtn) {
+            hfBtn.classList.toggle('active-handsfree', isActive);
+        }
+        if (dot) {
+            dot.style.display = isActive ? 'block' : 'none';
+        }
+    }
+
+    showSignalToast(msg, badge = '✨') {
+        const toast = document.getElementById('signalToast');
+        const badgeEl = document.getElementById('signalBadge');
+        const textEl = document.getElementById('signalText');
+        if (!toast || !badgeEl || !textEl) return;
+
+        badgeEl.textContent = badge;
+        textEl.textContent = msg;
+        toast.classList.add('show');
+
+        clearTimeout(this.signalToastTimeout);
+        this.signalToastTimeout = setTimeout(() => {
+            toast.classList.remove('show');
+        }, 3200);
+    }
+
+    startCountdown(duration = 3, sourceText = '📸 Pose & Smile!') {
+        if (duration <= 0) {
+            this.takeSnapshot();
+            return;
+        }
+
+        if (this.isCountingDown) return;
+        this.isCountingDown = true;
+        this.sound.init();
+
+        const overlay = document.getElementById('countdownOverlay');
+        const numEl = document.getElementById('countdownNumber');
+        const progressEl = document.getElementById('countdownProgress');
+        const sourceEl = document.getElementById('countdownSource');
+
+        if (sourceEl) sourceEl.textContent = sourceText;
+        if (overlay) overlay.classList.add('active');
+
+        let remaining = duration;
+        const total = duration;
+        const circumference = 364.4; // 2 * PI * 58
+
+        if (numEl) numEl.textContent = remaining;
+        if (progressEl) progressEl.style.strokeDashoffset = '0';
+        this.sound.playCountdownBeep(remaining);
+
+        if (this.countdownInterval) clearInterval(this.countdownInterval);
+
+        this.countdownInterval = setInterval(() => {
+            remaining--;
+            if (remaining > 0) {
+                if (numEl) {
+                    numEl.textContent = remaining;
+                    numEl.style.animation = 'none';
+                    numEl.offsetHeight; // Force reflow
+                    numEl.style.animation = 'countdown-pop 0.9s ease-out';
+                }
+                if (progressEl) {
+                    const offset = circumference * (1 - remaining / total);
+                    progressEl.style.strokeDashoffset = offset;
+                }
+                this.sound.playCountdownBeep(remaining);
+            } else if (remaining === 0) {
+                clearInterval(this.countdownInterval);
+                this.countdownInterval = null;
+
+                if (numEl) {
+                    numEl.textContent = '✨';
+                    numEl.style.animation = 'none';
+                    numEl.offsetHeight;
+                    numEl.style.animation = 'countdown-pop 0.5s ease-out';
+                }
+                if (progressEl) {
+                    progressEl.style.strokeDashoffset = circumference;
+                }
+                this.sound.playCountdownBeep(0);
+
+                setTimeout(() => {
+                    this.cancelCountdown();
+                    this.takeSnapshot();
+                }, 380);
+            }
+        }, 1000);
+    }
+
+    cancelCountdown() {
+        if (this.countdownInterval) {
+            clearInterval(this.countdownInterval);
+            this.countdownInterval = null;
+        }
+        this.isCountingDown = false;
+        const overlay = document.getElementById('countdownOverlay');
+        if (overlay) overlay.classList.remove('active');
+    }
+
+    dist(p1, p2) {
+        return Math.hypot(p1.x - p2.x, p1.y - p2.y);
+    }
+
+    // ----------------------------------------------------------------------
+    // 1. Camera Frame & Single-Hand "L" Sign Check
+    // ----------------------------------------------------------------------
+    detectSingleHandL(hand) {
+        if (!hand || hand.length < 21) return false;
+        const scale = this.dist(hand[0], hand[9]);
+        if (scale < 0.04) return false;
+
+        // Index finger extended straight up
+        const indexExt = this.dist(hand[8], hand[0]) > this.dist(hand[6], hand[0]) * 1.10 &&
+                         this.dist(hand[8], hand[5]) > scale * 0.55 &&
+                         hand[8].y < hand[5].y;
+
+        // Middle, Ring, Pinky curled tight into palm
+        const middleCurled = this.dist(hand[12], hand[0]) < this.dist(hand[8], hand[0]) * 0.82 &&
+                             this.dist(hand[12], hand[0]) < scale * 1.35;
+        const ringCurled = this.dist(hand[16], hand[0]) < this.dist(hand[8], hand[0]) * 0.82;
+        const pinkyCurled = this.dist(hand[20], hand[0]) < this.dist(hand[8], hand[0]) * 0.82;
+
+        // Thumb extended outward forming an "L" with index
+        const thumbExt = this.dist(hand[4], hand[2]) > scale * 0.35 &&
+                         this.dist(hand[4], hand[9]) > scale * 0.40;
+
+        // Thumb is NOT pinching index (very clear separation)
+        const notPinching = this.dist(hand[4], hand[8]) > scale * 0.50;
+
+        return indexExt && middleCurled && ringCurled && pinkyCurled && thumbExt && notPinching;
+    }
+
+    detectCameraFrame() {
+        if (this.handsDetected === 0) return null;
+
+        // Mode 1: Two-Hand Camera Viewfinder Box [ 📷 ]
+        if (this.handsDetected >= 2) {
+            const h1 = this.handLandmarks[0];
+            const h2 = this.handLandmarks[1];
+
+            if (this.detectSingleHandL(h1) && this.detectSingleHandL(h2)) {
+                const cw = this.canvas.width;
+                const ch = this.canvas.height;
+                const x1 = Math.min(h1[8].x, h1[4].x, h2[8].x, h2[4].x) * cw;
+                const x2 = Math.max(h1[8].x, h1[4].x, h2[8].x, h2[4].x) * cw;
+                const y1 = Math.min(h1[8].y, h1[4].y, h2[8].y, h2[4].y) * ch;
+                const y2 = Math.max(h1[8].y, h1[4].y, h2[8].y, h2[4].y) * ch;
+
+                const w = Math.max(140, x2 - x1);
+                const h = Math.max(100, y2 - y1);
+
+                return {
+                    type: 'box',
+                    x: Math.max(10, Math.min(x1, cw - w - 10)),
+                    y: Math.max(10, Math.min(y1, ch - h - 10)),
+                    w,
+                    h
+                };
+            }
+        }
+
+        // Mode 2: Single-Hand "L" Sign 👆 on EITHER hand
+        for (const hand of this.handLandmarks) {
+            if (this.detectSingleHandL(hand)) {
+                const cw = this.canvas.width;
+                const ch = this.canvas.height;
+                return {
+                    type: 'single',
+                    x: (hand[8].x + hand[4].x) * 0.5 * cw,
+                    y: Math.min(hand[8].y, hand[4].y) * ch,
+                    hand
+                };
+            }
+        }
+
+        return null;
+    }
+
+    // ----------------------------------------------------------------------
+    // 2. Strict & Deliberate Peace Sign ✌️
+    // ----------------------------------------------------------------------
+    detectPeaceSign(hand) {
+        if (!hand || hand.length < 21) return null;
+        const scale = this.dist(hand[0], hand[9]);
+        if (scale < 0.05) return null;
+
+        // Index and Middle extended upward
+        const indexExt = this.dist(hand[8], hand[0]) > this.dist(hand[6], hand[0]) * 1.12 &&
+                         this.dist(hand[8], hand[5]) > scale * 0.65;
+        const middleExt = this.dist(hand[12], hand[0]) > this.dist(hand[10], hand[0]) * 1.12 &&
+                          this.dist(hand[12], hand[9]) > scale * 0.65;
+
+        // Ring and Pinky firmly curled into palm
+        const ringFolded = this.dist(hand[16], hand[0]) < this.dist(hand[8], hand[0]) * 0.80;
+        const pinkyFolded = this.dist(hand[20], hand[0]) < this.dist(hand[8], hand[0]) * 0.80;
+
+        // Thumb tucked across palm (NOT pointing up, NOT pinching index)
+        const notPinching = this.dist(hand[4], hand[8]) > scale * 0.40;
+        const thumbTucked = this.dist(hand[4], hand[0]) < this.dist(hand[8], hand[0]) * 0.85;
+
+        // V-Spread: Index and Middle separated
+        const vSpread = this.dist(hand[8], hand[12]) > scale * 0.22;
+
+        // Hand is upright
+        const upright = hand[8].y < hand[5].y && hand[12].y < hand[9].y;
+
+        if (indexExt && middleExt && ringFolded && pinkyFolded && notPinching && thumbTucked && vSpread && upright) {
+            return {
+                x: (hand[8].x + hand[12].x) * 0.5 * this.canvas.width,
+                y: Math.min(hand[8].y, hand[12].y) * this.canvas.height
+            };
+        }
+        return null;
+    }
+
+    // ----------------------------------------------------------------------
+    // 3. Heart Pose (🫶 Strictly Joined Two Hands — Zero False Positives!)
+    // ----------------------------------------------------------------------
+    detectHeartGesture() {
+        // Must have both hands detected to form a two-hand heart (🫶)
+        if (this.handsDetected < 2) return null;
+        const h1 = this.handLandmarks[0];
+        const h2 = this.handLandmarks[1];
+
+        const scale1 = this.dist(h1[0], h1[9]);
+        const scale2 = this.dist(h2[0], h2[9]);
+        const avgScale = (scale1 + scale2) * 0.5;
+        if (avgScale < 0.04) return null;
+
+        // 1. Index fingertips (8) must be touching or touching together:
+        const indexDist = this.dist(h1[8], h2[8]);
+        if (indexDist > avgScale * 0.75) return null;
+
+        // 2. Thumb fingertips (4) must be touching or touching together:
+        const thumbDist = this.dist(h1[4], h2[4]);
+        if (thumbDist > avgScale * 0.75) return null;
+
+        // 3. In a true heart, index tips form the UPPER arches, so index tips
+        //    MUST be clearly higher (smaller Y) than thumb tips:
+        const yIndex = (h1[8].y + h2[8].y) * 0.5;
+        const yThumb = (h1[4].y + h2[4].y) * 0.5;
+        if (yIndex >= yThumb - avgScale * 0.18) return null;
+
+        // 4. The two hands must be joined together in the center (palms close):
+        const c1 = this.palmCenter(h1);
+        const c2 = this.palmCenter(h2);
+        if (this.dist(c1, c2) > avgScale * 2.2) return null;
+
+        // 5. Wrists reasonably aligned
+        if (Math.abs(h1[0].y - h2[0].y) > avgScale * 1.5) return null;
+
+        const cw = this.canvas.width;
+        const ch = this.canvas.height;
+        return {
+            type: 'two-hand',
+            x: (h1[8].x + h2[8].x + h1[4].x + h2[4].x) * 0.25 * cw,
+            y: (yIndex + yThumb) * 0.5 * ch
+        };
+    }
+
+    // ----------------------------------------------------------------------
+    // 4. Open Palm Gesture 🖐️ (Show Open Hand to Camera — Easiest Photo Trigger)
+    // ----------------------------------------------------------------------
+    detectOpenPalm(hand) {
+        if (!hand || hand.length < 21) return null;
+        const scale = this.dist(hand[0], hand[9]);
+        if (scale < 0.05) return null;
+
+        // All 4 finger tips extended outward away from wrist:
+        const indexExt = this.dist(hand[8], hand[0]) > this.dist(hand[6], hand[0]) * 1.12 &&
+                         this.dist(hand[8], hand[5]) > scale * 0.58;
+        const middleExt = this.dist(hand[12], hand[0]) > this.dist(hand[10], hand[0]) * 1.12 &&
+                          this.dist(hand[12], hand[9]) > scale * 0.58;
+        const ringExt = this.dist(hand[16], hand[0]) > this.dist(hand[14], hand[0]) * 1.12 &&
+                        this.dist(hand[16], hand[13]) > scale * 0.55;
+        const pinkyExt = this.dist(hand[20], hand[0]) > this.dist(hand[18], hand[0]) * 1.12 &&
+                         this.dist(hand[20], hand[17]) > scale * 0.50;
+
+        // Thumb extended outward (not tucked into palm)
+        const thumbExt = this.dist(hand[4], hand[0]) > scale * 0.85 &&
+                         this.dist(hand[4], hand[2]) > scale * 0.35;
+
+        // NOT pinching (thumb separated from index)
+        const notPinching = this.dist(hand[4], hand[8]) > scale * 0.55;
+
+        // Hand is upright (fingers above wrist)
+        const upright = hand[12].y < hand[0].y;
+
+        if (indexExt && middleExt && ringExt && pinkyExt && thumbExt && notPinching && upright) {
+            const center = this.palmCenter(hand);
+            return {
+                x: center.x * this.canvas.width,
+                y: center.y * this.canvas.height
+            };
+        }
+        return null;
+    }
+
+    // ----------------------------------------------------------------------
+    // 5. Namaste Pose (Joined Palms 🙏) - Only if Bloom Pose-Hold is enabled
+    // ----------------------------------------------------------------------
+    detectNamastePose() {
+        if (this.handsDetected < 2) return null;
+        const h1 = this.handLandmarks[0];
+        const h2 = this.handLandmarks[1];
+
+        const c1 = this.palmCenter(h1);
+        const c2 = this.palmCenter(h2);
+
+        const palmsClose = this.dist(c1, c2) < 0.10;
+        const tipsClose = this.dist(h1[12], h2[12]) < 0.09;
+        const upright = (h1[12].y < c1.y - 0.05) && (h2[12].y < c2.y - 0.05);
+
+        if (palmsClose && tipsClose && upright) {
+            return {
+                x: (c1.x + c2.x) * 0.5 * this.canvas.width,
+                y: (h1[12].y + h2[12].y) * 0.5 * this.canvas.height
+            };
+        }
+        return null;
+    }
+
+    // ----------------------------------------------------------------------
+    // 6. Update Hands-Free Gestures (Every Frame inside animate)
+    // ----------------------------------------------------------------------
+    updateHandsFreeGestures(dt) {
+        if (this.isCountingDown) {
+            this.cameraFrameHoldTime = 0;
+            this.peaceHoldTime = 0;
+            this.heartHoldTime = 0;
+            this.palmHoldTime = 0;
+            this.poseHoldTime = 0;
+            return;
+        }
+
+        const now = Date.now();
+        if (now - this.lastSnapTime < 3200) {
+            this.cameraFrameHoldTime = Math.max(0, this.cameraFrameHoldTime - dt * 0.05);
+            this.peaceHoldTime = Math.max(0, this.peaceHoldTime - dt * 0.05);
+            this.heartHoldTime = Math.max(0, this.heartHoldTime - dt * 0.05);
+            this.palmHoldTime = Math.max(0, this.palmHoldTime - dt * 0.05);
+            this.poseHoldTime = Math.max(0, this.poseHoldTime - dt * 0.05);
+            return;
+        }
+
+        // Correct frame step timing: ~0.020 per frame at 60fps (dt ~ 1.0)
+        const step = Math.min(0.06, Math.max(0.012, dt * 0.020));
+
+        // 1. Check Camera Frame / "L" Gesture 👆 [ 📷 ]
+        let cameraFound = false;
+        if (this.cameraFrameEnabled) {
+            const frame = this.detectCameraFrame();
+            if (frame) {
+                cameraFound = true;
+                this.cameraFrameBox = frame;
+                this.cameraFrameHoldTime += step;
+                if (this.cameraFrameHoldTime >= this.cameraFrameHoldRequired) {
+                    this.cameraFrameHoldTime = 0;
+                    this.lastSnapTime = Date.now();
+                    const toastText = frame.type === 'box' ? 'Camera Frame Locked! 📸' : '"L" Sign Locked! 👆';
+                    this.showSignalToast(toastText, '📸');
+                    this.sound.playChime(6, 0.3);
+                    const delay = this.timerDuration > 0 ? this.timerDuration : 3;
+                    this.startCountdown(delay, toastText);
+                    return;
+                }
+            }
+        }
+        if (!cameraFound) {
+            this.cameraFrameHoldTime = Math.max(0, this.cameraFrameHoldTime - step * 0.85);
+            if (this.cameraFrameHoldTime === 0) this.cameraFrameBox = null;
+        }
+
+        // 2. Check Peace Sign ✌️
+        let peaceFound = false;
+        if (this.gestureTriggerEnabled) {
+            for (const hand of this.handLandmarks) {
+                const pos = this.detectPeaceSign(hand);
+                if (pos) {
+                    peaceFound = true;
+                    this.peaceHandPos = pos;
+                    this.peaceHoldTime += step;
+                    if (this.peaceHoldTime >= this.peaceHoldRequired) {
+                        this.peaceHoldTime = 0;
+                        this.lastSnapTime = Date.now();
+                        this.showSignalToast('Peace Gesture Locked!', '✌️');
+                        this.sound.playChime(5, 0.3);
+                        const delay = this.timerDuration > 0 ? this.timerDuration : 3;
+                        this.startCountdown(delay, '✌️ Peace Gesture Locked!');
+                        return;
+                    }
+                    break;
+                }
+            }
+        }
+        if (!peaceFound) {
+            this.peaceHoldTime = Math.max(0, this.peaceHoldTime - step * 0.85);
+            if (this.peaceHoldTime === 0) this.peaceHandPos = null;
+        }
+
+        // 3. Check Two-Hand Heart Pose 🫶
+        let heartFound = false;
+        if (this.heartGestureEnabled) {
+            const hPos = this.detectHeartGesture();
+            if (hPos) {
+                heartFound = true;
+                this.heartCenterPos = hPos;
+                this.heartHoldTime += step;
+console.log("Procedural flowers engine ready.");
