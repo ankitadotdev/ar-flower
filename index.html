@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AR Flower Bloom — Control procedural glowing flowers, butterflies, and magic in real-time with hand gestures">
+    <title>AR Flower Bloom — Hand Gesture & Magic Flora</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container" id="appContainer">
+        <!-- Live Webcam Video -->
+        <video id="webcam" autoplay playsinline></video>
+
+        <!-- Canvas for Flower, Particles, Butterflies, Trails & Skeleton -->
+        <canvas id="canvas"></canvas>
+
+        <!-- Vignette & Cinematic Ambient Lighting -->
+        <div class="vignette"></div>
+        <div class="flash-overlay" id="flashOverlay"></div>
+
+        <!-- Top Navigation & Flower Selector Bar -->
+        <header class="top-bar">
+            <div class="brand">
+                <span class="brand-icon">✿</span>
+                <span class="brand-text">AR <strong>Bloom</strong></span>
+            </div>
+
+            <!-- Flower Species Selector -->
+            <div class="flower-selector" id="flowerSelector" role="tablist" aria-label="Flower Species">
+                <button class="flower-btn active" data-flower="tulip" title="Tulip">
+                    <span class="flower-emoji">🌷</span>
+                    <span class="flower-name">Tulip</span>
+                </button>
+                <button class="flower-btn" data-flower="rose" title="Rose">
+                    <span class="flower-emoji">🌹</span>
+                    <span class="flower-name">Rose</span>
+                </button>
+                <button class="flower-btn" data-flower="lotus" title="Lotus">
+                    <span class="flower-emoji">🪷</span>
+                    <span class="flower-name">Lotus</span>
+                </button>
+                <button class="flower-btn" data-flower="sunflower" title="Sunflower">
+                    <span class="flower-emoji">🌻</span>
+                    <span class="flower-name">Sunflower</span>
+                </button>
+                <button class="flower-btn" data-flower="sakura" title="Sakura">
+                    <span class="flower-emoji">🌸</span>
+                    <span class="flower-name">Sakura</span>
+                </button>
+            </div>
+
+            <!-- Action Controls -->
+            <div class="action-buttons">
+                <!-- Anchor Mode Toggle: Ground vs Palm AR -->
+                <button class="icon-btn" id="modeToggleBtn" title="Toggle Anchor: Ground / Palm AR">
+                    <span class="btn-icon" id="modeIcon">🌱</span>
+                    <span class="btn-text" id="modeLabel">Ground</span>
+                </button>
+
+                <!-- Audio Chimes Toggle -->
+                <button class="icon-btn" id="soundToggleBtn" title="Toggle Nature & Bloom Chimes">
+                    <span class="btn-icon" id="soundIcon">🔇</span>
+                </button>
+
+                <!-- Hands-Free Photo Signals Toggle & Drawer -->
+                
+
+                <!-- Self-Timer Quick Toggle -->
+                
+
+                <!-- Snapshot Capture -->
+                <button class="icon-btn primary-action" id="snapshotBtn" title="Take AR Photo">
+                    <span class="btn-icon">📸</span>
+                    <span class="btn-text">Photo</span>
+                </button>
+
+                <!-- Manual / Touch Fallback Controls Toggle -->
+                <button class="icon-btn" id="manualControlsToggle" title="Manual Sliders / Trackpad Control">
+                    <span class="btn-icon">🎛️</span>
+                </button>
+
+                <!-- Help / Gestures Info -->
+                <button class="icon-btn" id="helpToggle" title="Gesture Help">
+                    <span class="btn-icon">❓</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Hands-Free Photo Controls Drawer -->
+        <!-- Manual Sliders Drawer (for fallback / mouse control) -->
+        <div class="manual-drawer" id="manualDrawer">
+            <div class="drawer-header">
+                <h3>Manual Flora Controls</h3>
+                <button class="drawer-close" id="drawerClose">✕</button>
+            </div>
+            <div class="control-row">
+                <label for="manualBloomSlider">✿ Bloom</label>
+                <input type="range" id="manualBloomSlider" min="0" max="1" step="0.01" value="0.5">
+                <span class="val-display" id="valBloom">50%</span>
+            </div>
+            <div class="control-row">
+                <label for="manualGrowthSlider">🌱 Growth</label>
+                <input type="range" id="manualGrowthSlider" min="0" max="1" step="0.01" value="0.7">
+                <span class="val-display" id="valGrowth">70%</span>
+            </div>
+            <div class="control-row">
+                <label for="manualWindSlider">💨 Wind Force</label>
+                <input type="range" id="manualWindSlider" min="-1" max="1" step="0.02" value="0">
+                <span class="val-display" id="valWind">0.0</span>
+            </div>
+            <div class="control-row checkbox-row">
+                <label for="toggleButterfliesCheckbox" class="toggle-switch-label">
+                    <span>🦋 Butterflies & Bees</span>
+                    <div class="switch-wrapper">
+                        <input type="checkbox" id="toggleButterfliesCheckbox" checked>
+                        <span class="switch-slider"></span>
+                    </div>
+                </label>
+            </div>
+            <div class="manual-hint">
+                💡 Tip: Click and drag anywhere on screen to blow wind gusts!
+            </div>
+        </div>
+
+        <!-- Gesture Guide Toast / Instructions -->
+        <div class="instructions" id="instructions">
+            <div class="instruction-content">
+                <div class="gesture-pill">
+                    <span class="pill-badge left">Left Hand</span>
+                    <span>Pinch to <strong>Bloom</strong></span>
+                </div>
+                <div class="separator">·</div>
+                <div class="gesture-pill">
+                    <span class="pill-badge right">Right Hand</span>
+                    <span>Pinch to <strong>Grow</strong></span>
+                </div>
+                <div class="separator">·</div>
+                <div class="gesture-pill">
+                    <span class="pill-badge photo">Photo Signal 📸</span>
+                    <span>Hold <strong>✌️ Peace</strong>, <strong>👆 "L" Sign</strong>, <strong>🫶 Heart</strong>, or <strong>🖐️ Palm</strong></span>
+                </div>
+            </div>
+            <button class="dismiss-btn" id="dismissInstructions" title="Dismiss">✕</button>
+        </div>
+
+        <!-- Signal / Gesture Detected Floating Toast -->
+        <div class="signal-toast" id="signalToast">
+            <span class="signal-badge" id="signalBadge">✌️</span>
+            <span class="signal-text" id="signalText">Peace gesture detected!</span>
+        </div>
+
+        <!-- Holographic Countdown HUD Overlay -->
+        <!-- Initializing Loading Screen -->
+        <div class="loading-overlay" id="loading">
+            <div class="loading-card">
+                <div class="loading-flower-wrap">
+                    <div class="loading-flower-glow"></div>
+                    <div class="loading-flower">✿</div>
+                </div>
+                <h2 class="loading-title">Awakening AR Bloom</h2>
+                <p class="loading-text">Starting AI Vision & Hand Tracking Engine</p>
+                <div class="loading-status" id="loadingStatus">Please allow camera permissions when prompted</div>
+                <div class="loading-progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <button class="skip-camera-btn" id="skipCameraBtn">Continue with Mouse Controls</button>
+            </div>
+        </div>
+
+        <!-- Snapshot Notification Toast -->
+        <div class="snapshot-toast" id="snapshotToast">
+            <span class="snapshot-icon">✨</span>
+            <span class="snapshot-msg">Snapshot saved to your downloads!</span>
+        </div>
+    </div>
+
+    <!-- MediaPipe Hands & Camera Utils -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js" crossorigin="anonymous"></script>
+
+    <!-- Main Advanced Application -->
+    <script src="app.js"></script>
+</body>
+</html>
