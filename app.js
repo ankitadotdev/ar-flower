@@ -3098,4 +3098,329 @@ class FlowerBloomApp {
         const flowerScale = 1.2 * (0.4 + this.growth * 0.8);
         const stemLength = (60 + this.growth * 110);
 
-console.log("Snapshot merger ready.");
+        const tipX = px + Math.cos(palmAngle + Math.PI / 2) * stemLength + totalWind * 15;
+        const tipY = py + Math.sin(palmAngle + Math.PI / 2) * stemLength;
+
+        // Draw stem connecting palm to flower head
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = '#3a8a30';
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = 'rgba(80, 200, 60, 0.4)';
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.quadraticCurveTo((px + tipX) / 2 + totalWind * 20, (py + tipY) / 2, tipX, tipY);
+        ctx.stroke();
+
+        // Mini foliage sprouting from palm
+        ctx.fillStyle = 'rgba(60, 160, 50, 0.8)';
+        ctx.beginPath();
+        ctx.arc(px, py, 6 * this.growth, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // Draw flower head at palm stem tip
+        this.drawFlowerHead(tipX, tipY, this.bloom, totalWind, flowerScale);
+        this.drawPostGlow(tipX, tipY);
+
+        this.mainFlowerPos = { x: tipX, y: tipY };
+    }
+
+    // ----------------------------------------------------------------------
+    // HAND SKELETON & VISUAL HUD
+    // ----------------------------------------------------------------------
+    drawHandSkeleton(lm, handedness) {
+        const ctx = this.ctx;
+        const cw = this.canvas.width;
+        const ch = this.canvas.height;
+
+        const thumbTip = lm[4];
+        const indexTip = lm[8];
+
+        if (thumbTip && indexTip) {
+            const tx = thumbTip.x * cw;
+            const ty = thumbTip.y * ch;
+            const ix = indexTip.x * cw;
+            const iy = indexTip.y * ch;
+
+            const isLeft = handedness && handedness.label === 'Left';
+            const labelText = isLeft ? '✿ Left: Bloom' : '🌱 Right: Grow';
+            const glowColor = isLeft ? 'rgba(255, 77, 136, 0.85)' : 'rgba(46, 213, 115, 0.85)';
+            const strokeStyle = isLeft ? '#ff4d88' : '#2ed573';
+
+            // Dotted Pinch line
+            ctx.save();
+            ctx.setLineDash([4, 4]);
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = strokeStyle;
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = glowColor;
+            ctx.beginPath();
+            ctx.moveTo(tx, ty);
+            ctx.lineTo(ix, iy);
+            ctx.stroke();
+            ctx.restore();
+
+            // Glowing indicator dots at fingertips
+            ctx.save();
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = glowColor;
+            ctx.fillStyle = strokeStyle;
+            ctx.beginPath();
+            ctx.arc(tx, ty, 6, 0, Math.PI * 2);
+            ctx.arc(ix, iy, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            // Unmirrored Floating Text Pill
+            const midX = (tx + ix) / 2;
+            const midY = (ty + iy) / 2;
+
+            ctx.save();
+            ctx.translate(cw, 0);
+            ctx.scale(-1, 1);
+
+            ctx.font = '600 12px "Plus Jakarta Sans", sans-serif';
+            const textWidth = ctx.measureText(labelText).width;
+            const pillW = textWidth + 18;
+            const pillH = 24;
+            const drawX = cw - midX;
+            const drawY = midY - 22;
+
+            ctx.fillStyle = 'rgba(12, 8, 22, 0.85)';
+            ctx.strokeStyle = strokeStyle;
+            ctx.lineWidth = 1;
+            ctx.shadowBlur = 6;
+            ctx.shadowColor = glowColor;
+            ctx.beginPath();
+            ctx.roundRect(drawX - pillW / 2, drawY - pillH / 2, pillW, pillH, 8);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.shadowBlur = 0;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(labelText, drawX, drawY);
+
+            ctx.restore();
+        }
+    }
+
+    drawHUD() {
+        const ctx = this.ctx;
+        const cw = this.canvas.width;
+
+        ctx.save();
+        ctx.translate(cw, 0);
+        ctx.scale(-1, 1);
+
+        const px = 20;
+        const py = 76;
+
+        ctx.fillStyle = 'rgba(12, 8, 22, 0.7)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(px, py, 160, 94, 12);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = '600 13px "Plus Jakarta Sans", sans-serif';
+        ctx.textAlign = 'left';
+
+        // Bloom Metric
+        ctx.fillStyle = '#ff70a0';
+        ctx.fillText(`Bloom: ${(this.bloom * 100).toFixed(0)}%`, px + 14, py + 26);
+
+        // Growth Metric
+        ctx.fillStyle = '#4cd137';
+        ctx.fillText(`Growth: ${(this.growth * 100).toFixed(0)}%`, px + 14, py + 48);
+
+        // Wind Metric
+        ctx.fillStyle = '#48dbfb';
+        ctx.fillText(`Breeze: ${this.windForce.toFixed(2)}`, px + 14, py + 70);
+
+        ctx.restore();
+
+        // Render Deliberate Gesture Locking HUDs (Viewfinder & Rings)
+        this.drawCameraFrameHUD();
+        this.drawPeaceLockHUD();
+        this.drawHeartLockHUD();
+        this.drawPalmLockHUD();
+        this.drawNamasteLockHUD();
+    }
+
+    drawPostGlow(cx, cy) {
+        if (this.bloom < 0.05) return;
+        const ctx = this.ctx;
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        const r = 120 + this.bloom * 160;
+        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+        g.addColorStop(0, `rgba(255, 110, 150, ${this.bloom * 0.18})`);
+        g.addColorStop(0.5, `rgba(255, 70, 110, ${this.bloom * 0.08})`);
+        g.addColorStop(1, 'rgba(255, 50, 80, 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // Trigger celebration fireworks when flower hits full blossom
+    triggerSuperBloom(cx, cy) {
+        if (this.hasFiredSuperBloom) return;
+        this.hasFiredSuperBloom = true;
+        this.sound.playShimmer();
+
+        for (let i = 0; i < 40; i++) {
+            this.burstPetals.push(new BurstPetal(cx, cy, 345));
+        }
+        for (let i = 0; i < 25; i++) {
+            this.fairyDusts.push(new FairyDust(cx, cy, 330));
+        }
+    }
+
+    // ======================================================================
+    // MAIN ANIMATION LOOP
+    // ======================================================================
+    animate(timestamp) {
+        const dt = this.lastTimestamp ? Math.min(2.5, (timestamp - this.lastTimestamp) / 16.67) : 1;
+        this.lastTimestamp = timestamp;
+        this.time += 0.016 * dt;
+
+        const ctx = this.ctx;
+        const cw = this.canvas.width;
+        const ch = this.canvas.height;
+
+        // Smooth Lerping
+        const lerpSpeed = 0.07 * dt;
+        this.bloom += (this.targetBloom - this.bloom) * lerpSpeed;
+        this.growth += (this.targetGrowth - this.growth) * 0.05 * dt;
+        this.windForce += (this.targetWindForce - this.windForce) * 0.06 * dt;
+
+        // Natural continuous wind
+        const naturalWind = this.noise.get(this.time * 0.7, 1) * 0.14;
+        const totalWind = naturalWind + this.windForce * 0.2;
+
+        // Clear Canvas
+        ctx.clearRect(0, 0, cw, ch);
+
+        // 1. Draw Hand Skeleton Overlay
+        for (let i = 0; i < this.handLandmarks.length; i++) {
+            const lm = this.handLandmarks[i];
+            const handedness = this.handHandedness[i];
+            this.drawHandSkeleton(lm, handedness);
+        }
+
+        // 2. Update & Draw Pollen Sparkle Particles
+        for (const p of this.particles) {
+            p.update(totalWind, dt);
+            p.draw(ctx);
+        }
+
+        // 3. Update & Draw Fairy Dust Trails
+        for (let i = this.fairyDusts.length - 1; i >= 0; i--) {
+            const fd = this.fairyDusts[i];
+            fd.update(dt);
+            fd.draw(ctx);
+            if (fd.life <= 0) this.fairyDusts.splice(i, 1);
+        }
+
+        // 4. Update & Draw Super-Bloom Burst Petals
+        for (let i = this.burstPetals.length - 1; i >= 0; i--) {
+            const bp = this.burstPetals[i];
+            bp.update(dt);
+            bp.draw(ctx);
+            if (bp.life <= 0) this.burstPetals.splice(i, 1);
+        }
+
+        // 5. Flower Rendering
+        let flowerTip = { x: cw * 0.75, y: ch * 0.5 };
+
+        if (this.anchorMode === 'palm' && this.handsDetected > 0) {
+            // Anchor to first detected hand (or right hand if present)
+            const palmHand = this.handLandmarks[this.handsDetected - 1];
+            this.drawPalmFlower(palmHand, totalWind);
+            flowerTip = this.mainFlowerPos;
+        } else if (this.growth > 0.005) {
+            // Ground Rooted Mode
+            const stemBaseX = cw * 0.75;
+            const stemBaseY = ch * 0.95;
+            const stemH = ch * 0.46 * this.growth;
+            const flowerScale = 1.25 * this.growth;
+
+            const stemData = this.drawStem(stemBaseX, stemBaseY, stemH, totalWind);
+            flowerTip = stemData.tip;
+            const pts = stemData.pts;
+
+            // 4 Side Branches with Sub-Flowers
+            const branchConfigs = [
+                { heightRatio: 0.3, direction: -1, lengthFactor: 0.16, scaleFactor: 0.42 },
+                { heightRatio: 0.45, direction: 1, lengthFactor: 0.14, scaleFactor: 0.45 },
+                { heightRatio: 0.6, direction: -1, lengthFactor: 0.12, scaleFactor: 0.48 },
+                { heightRatio: 0.75, direction: 1, lengthFactor: 0.1, scaleFactor: 0.4 }
+            ];
+
+            for (const config of branchConfigs) {
+                const idx = Math.floor(pts.length * config.heightRatio);
+                if (idx > 0 && idx < pts.length) {
+                    const pt = pts[idx];
+                    const prevPt = pts[idx - 1] || pt;
+                    const tangent = Math.atan2(pt.y - prevPt.y, pt.x - prevPt.x);
+                    const branchAngle = tangent + (config.direction * 0.75);
+                    const branchLength = ch * config.lengthFactor * this.growth;
+
+                    const branchTip = this.drawBranch(pt.x, pt.y, branchAngle, branchLength, totalWind, this.growth);
+                    const subFlowerScale = flowerScale * config.scaleFactor;
+
+                    this.drawFlowerHead(branchTip.x, branchTip.y, this.bloom, totalWind, subFlowerScale);
+                    this.drawPostGlow(branchTip.x, branchTip.y);
+                }
+            }
+
+            // Main Primary Flower Head
+            this.drawFlowerHead(flowerTip.x, flowerTip.y, this.bloom, totalWind, flowerScale);
+            this.drawPostGlow(flowerTip.x, flowerTip.y);
+
+            this.mainFlowerPos = flowerTip;
+        }
+
+        // Check Super-Bloom Trigger (>92% blossom)
+        if (this.bloom > 0.92) {
+            this.triggerSuperBloom(flowerTip.x, flowerTip.y);
+        } else if (this.bloom < 0.7) {
+            this.hasFiredSuperBloom = false; // Reset trigger so it can fire again next bloom!
+        }
+
+        // 6. Update & Draw Realistic Flapping Butterflies & Honey Bees (if enabled)
+        if (this.showButterfliesAndBees) {
+            for (const b of this.butterflies) {
+                b.update(cw, ch, flowerTip, this.bloom, totalWind, dt, this.fairyDusts);
+                b.draw(ctx);
+            }
+            for (const bee of this.bees) {
+                bee.update(cw, ch, flowerTip, this.bloom, totalWind, dt, this.particles);
+                bee.draw(ctx);
+            }
+        }
+
+        // 7. Hands-Free Unique Photo Gesture Detection & Lock Progress
+        this.updateHandsFreeGestures(dt);
+
+        // 8. HUD Metrics Display
+        this.drawHUD();
+
+        requestAnimationFrame((ts) => this.animate(ts));
+    }
+}
+
+// ==========================================================================
+// APPLICATION BOOT
+// ==========================================================================
+window.addEventListener('DOMContentLoaded', () => {
+    new FlowerBloomApp();
+});
