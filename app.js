@@ -2298,4 +2298,404 @@ class FlowerBloomApp {
     initParticles() {
         this.particles = [];
         for (let i = 0; i < 65; i++) {
-console.log("Creatures & particle physics ready.");
+            this.particles.push(new Particle(this.canvas.width, this.canvas.height));
+        }
+    }
+
+    initButterflies() {
+        this.butterflies = [];
+        for (let i = 0; i < 3; i++) {
+            this.butterflies.push(new RealisticButterfly(this.canvas.width, this.canvas.height, i));
+        }
+        this.bees = [];
+        for (let i = 0; i < 2; i++) {
+            this.bees.push(new HoneyBee(this.canvas.width, this.canvas.height, i));
+        }
+    }
+
+    // ----------------------------------------------------------------------
+    // MediaPipe Hand Tracking Setup
+    // ----------------------------------------------------------------------
+    initHandTracking() {
+        try {
+            if (typeof Hands === 'undefined') {
+                this.loadingStatus.textContent = 'Running in offline/manual mode';
+                setTimeout(() => this.loadingEl?.classList.add('hidden'), 1200);
+                return;
+            }
+
+            const hands = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${file}`,
+            });
+
+            hands.setOptions({
+                maxNumHands: 2,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.65,
+                minTrackingConfidence: 0.5,
+            });
+
+            hands.onResults((r) => this.onHandResults(r));
+
+            const cam = new Camera(this.video, {
+                onFrame: async () => {
+                    await hands.send({ image: this.video });
+                },
+                width: 1280,
+                height: 720,
+            });
+
+            cam.start()
+                .then(() => {
+                    this.isCameraActive = true;
+                    setTimeout(() => this.loadingEl?.classList.add('hidden'), 500);
+                })
+                .catch((err) => {
+                    console.warn('Camera permission denied or camera not found:', err);
+                    this.loadingStatus.textContent = 'Camera not available. Using manual controls!';
+                    setTimeout(() => {
+                        this.loadingEl?.classList.add('hidden');
+                        this.manualDrawer?.classList.add('open');
+                        this.isManualActive = true;
+                        this.targetGrowth = 0.8;
+                        this.targetBloom = 0.6;
+                    }, 1200);
+                });
+        } catch (e) {
+            console.error('Hand tracking init error:', e);
+            this.loadingEl?.classList.add('hidden');
+        }
+    }
+
+    onHandResults(results) {
+        this.handLandmarks = results.multiHandLandmarks || [];
+        this.handHandedness = results.multiHandedness || [];
+        this.handsDetected = this.handLandmarks.length;
+
+        let leftPinch = 0;
+        let rightPinch = 0;
+        let hasLeft = false;
+        let hasRight = false;
+
+        let windSum = 0;
+        let windCount = 0;
+
+        if (this.handsDetected > 0) {
+            for (let i = 0; i < this.handsDetected; i++) {
+                const hand = this.handLandmarks[i];
+                const handedness = results.multiHandedness[i];
+                const isLeft = handedness && handedness.label === 'Left';
+                const handKey = isLeft ? 'Left' : 'Right';
+                const pinch = this.calcPinchDistance(hand);
+
+                if (isLeft) {
+                    leftPinch = pinch;
+                    hasLeft = true;
+                } else {
+                    rightPinch = pinch;
+                    hasRight = true;
+                }
+
+                // Per-hand velocity tracking with deadzone
+                const c = this.palmCenter(hand);
+                if (this.prevHands[handKey]) {
+                    const dx = c.x - this.prevHands[handKey].x;
+                    // Deadzone: slow movements (raising hand, pinching) do NOT trigger wind!
+                    if (Math.abs(dx) > 0.03) {
+                        windSum += (dx - Math.sign(dx) * 0.03) * 5;
+                        windCount++;
+                    }
+                }
+                this.prevHands[handKey] = { x: c.x, y: c.y };
+
+                // Fairy Dust Sparkles from Index Fingertip (landmark 8)
+                const indexTip = hand[8];
+                if (indexTip) {
+                    const fx = indexTip.x * this.canvas.width;
+                    const fy = indexTip.y * this.canvas.height;
+                    const hue = isLeft ? 335 : 155;
+                    this.fairyDusts.push(new FairyDust(fx, fy, hue));
+                    if (Math.random() < 0.4) {
+                        this.fairyDusts.push(new FairyDust(fx, fy, hue));
+                    }
+                }
+            }
+
+            if (windCount > 0) {
+                this.targetWindForce = Math.max(-1.0, Math.min(1.0, windSum / windCount));
+            } else {
+                this.targetWindForce *= 0.85; // Quickly decay when hands aren't waving fast
+            }
+
+            if (!this.isManualActive) {
+                // Left Hand controls Bloom
+                this.targetBloom = hasLeft ? leftPinch : this.targetBloom * 0.98;
+                // Right Hand controls Growth
+                this.targetGrowth = hasRight ? rightPinch : this.targetGrowth * 0.98;
+            }
+        } else if (!this.isManualActive) {
+            this.prevHands = {};
+            this.targetBloom *= 0.96;
+            this.targetGrowth *= 0.96;
+            this.targetWindForce *= 0.85;
+        }
+
+        // Sound trigger
+        this.sound.updateBloomSound(this.bloom);
+    }
+
+    calcPinchDistance(lm) {
+        const thumb = lm[4];
+        const index = lm[8];
+        const wrist = lm[0];
+        const mcp = lm[9];
+
+        const ref = Math.hypot(mcp.x - wrist.x, mcp.y - wrist.y);
+        if (ref < 0.01) return 0;
+
+        const dist = Math.hypot(thumb.x - index.x, thumb.y - index.y);
+        return Math.min(1, Math.max(0, (dist / ref - 0.15) * 1.6));
+    }
+
+    palmCenter(lm) {
+        const ids = [0, 5, 9, 13, 17];
+        let x = 0, y = 0;
+        for (const i of ids) { x += lm[i].x; y += lm[i].y; }
+        return { x: x / ids.length, y: y / ids.length };
+    }
+
+    // ----------------------------------------------------------------------
+    // HIGH-RES PHOTO SNAPSHOT
+    // ----------------------------------------------------------------------
+    takeSnapshot() {
+        this.lastSnapTime = Date.now();
+        this.sound.playCameraShutter();
+
+        // Screen Flash Effect
+        this.flashOverlay.classList.add('active');
+        setTimeout(() => this.flashOverlay.classList.remove('active'), 500);
+
+        // Offscreen canvas merging video and drawing
+        const snapCanvas = document.createElement('canvas');
+        snapCanvas.width = this.canvas.width;
+        snapCanvas.height = this.canvas.height;
+        const sctx = snapCanvas.getContext('2d');
+
+        // Draw webcam frame (mirrored)
+        if (this.isCameraActive && this.video.videoWidth) {
+            sctx.save();
+            sctx.translate(snapCanvas.width, 0);
+            sctx.scale(-1, 1);
+            sctx.drawImage(this.video, 0, 0, snapCanvas.width, snapCanvas.height);
+            sctx.restore();
+        } else {
+            // Dark gradient backdrop fallback
+            const grad = sctx.createRadialGradient(
+                snapCanvas.width * 0.5, snapCanvas.height * 0.5, 50,
+                snapCanvas.width * 0.5, snapCanvas.height * 0.5, snapCanvas.width * 0.8
+            );
+            grad.addColorStop(0, '#190a28');
+            grad.addColorStop(1, '#050209');
+            sctx.fillStyle = grad;
+            sctx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
+        }
+
+        // Draw flower overlay (mirrored to match user perspective)
+        sctx.save();
+        sctx.translate(snapCanvas.width, 0);
+        sctx.scale(-1, 1);
+        sctx.drawImage(this.canvas, 0, 0);
+        sctx.restore();
+
+        // Watermark signature branding
+        sctx.save();
+        sctx.font = '600 16px "Plus Jakarta Sans", sans-serif';
+        sctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        sctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+        sctx.shadowBlur = 8;
+        sctx.fillText('✿ AR Flowers — Created by Ankita', 30, snapCanvas.height - 30);
+        sctx.restore();
+
+        // Download trigger
+        const link = document.createElement('a');
+        link.download = `ar-bloom-${Date.now()}.png`;
+        link.href = snapCanvas.toDataURL('image/png');
+        link.click();
+
+        // Show toast
+        this.snapshotToast.classList.add('show');
+        setTimeout(() => this.snapshotToast.classList.remove('show'), 3500);
+    }
+
+    // ======================================================================
+    // PROCEDURAL FLOWER DRAWING ALGORITHMS
+    // ======================================================================
+
+    // 1. TULIP (Classic Red/Pink Layered Bloom)
+    drawTulip(ctx, scale, bloom, windAngle) {
+        const bloomScaleFactor = 1.0 + bloom * 0.2;
+        const adjustedScale = scale * bloomScaleFactor;
+        const hue = 345;
+        const sat = 85;
+        const light = 55;
+
+        const maxPetalLen = 85 * adjustedScale;
+
+        // Back petals
+        const backPetals = [
+            { angle: 0, lengthMul: 1.0, widthMul: 0.4, hueOffset: 0, lightOffset: -4 },
+            { angle: -0.15 - bloom * 0.7, lengthMul: 0.95, widthMul: 0.38, hueOffset: 10, lightOffset: -2 },
+            { angle: 0.15 + bloom * 0.7, lengthMul: 0.95, widthMul: 0.38, hueOffset: 10, lightOffset: -2 }
+        ];
+
+        for (const p of backPetals) {
+            const flutter = this.noise.get(this.time * 1.2 + p.angle * 10, 3) * 0.04 * (1 + bloom);
+            const finalAngle = p.angle + flutter + windAngle * 0.1;
+            const len = maxPetalLen * p.lengthMul;
+            const wid = maxPetalLen * p.widthMul * (0.6 + bloom * 0.8);
+            this.drawTulipPetal(ctx, finalAngle, len, wid, hue + p.hueOffset, sat, light + p.lightOffset, bloom);
+        }
+
+        // Center Pistil and Stamens
+        if (bloom > 0.15) {
+            ctx.save();
+            ctx.fillStyle = `rgba(180, 230, 100, ${bloom})`;
+            ctx.beginPath();
+            ctx.arc(0, -maxPetalLen * 0.22, 5 * adjustedScale, 0, Math.PI * 2);
+            ctx.fill();
+
+            const stamenCount = 5;
+            for (let i = 0; i < stamenCount; i++) {
+                const a = (i / stamenCount) * Math.PI * 2 + this.time * 0.5;
+                const r = 9 * adjustedScale * bloom;
+                const sx = Math.cos(a) * r;
+                const sy = -maxPetalLen * 0.22 + Math.sin(a) * r;
+
+                ctx.strokeStyle = `rgba(240, 215, 90, ${bloom * 0.8})`;
+                ctx.lineWidth = 1.5 * adjustedScale;
+                ctx.beginPath();
+                ctx.moveTo(0, -maxPetalLen * 0.1);
+                ctx.lineTo(sx, sy);
+                ctx.stroke();
+
+                ctx.fillStyle = `rgba(255, 240, 140, ${bloom})`;
+                ctx.beginPath();
+                ctx.arc(sx, sy, 2.5 * adjustedScale, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        // Front petals
+        const frontPetals = [
+            { angle: -0.05 - bloom * 0.55, lengthMul: 0.9, widthMul: 0.35, hueOffset: 5, lightOffset: 2 },
+            { angle: 0.05 + bloom * 0.55, lengthMul: 0.9, widthMul: 0.35, hueOffset: 5, lightOffset: 2 },
+            { angle: 0, lengthMul: 0.85, widthMul: 0.32, hueOffset: -5, lightOffset: 5 }
+        ];
+
+        for (const p of frontPetals) {
+            const flutter = this.noise.get(this.time * 1.4 + p.angle * 10, 4) * 0.03 * (1 + bloom);
+            const finalAngle = p.angle + flutter + windAngle * 0.05;
+            const len = maxPetalLen * p.lengthMul;
+            const wid = maxPetalLen * p.widthMul * (0.65 + bloom * 0.75);
+            this.drawTulipPetal(ctx, finalAngle, len, wid, hue + p.hueOffset, sat, light + p.lightOffset, bloom);
+        }
+    }
+
+    drawTulipPetal(ctx, angle, length, width, hue, sat, light, bloom) {
+        ctx.save();
+        ctx.rotate(angle);
+
+        const grad = ctx.createLinearGradient(0, 0, 0, -length);
+        grad.addColorStop(0, `hsla(${hue + 25}, ${sat}%, ${light - 8}%, 0.92)`);
+        grad.addColorStop(0.4, `hsla(${hue}, ${sat}%, ${light}%, 0.88)`);
+        grad.addColorStop(0.85, `hsla(${hue - 10}, ${sat + 10}%, ${light + 10}%, 0.88)`);
+        grad.addColorStop(1, `hsla(${hue - 20}, ${sat + 15}%, ${light + 18}%, 0.95)`);
+
+        ctx.fillStyle = grad;
+        ctx.shadowBlur = 12 + bloom * 18;
+        ctx.shadowColor = `hsla(${hue}, 100%, 65%, ${0.25 + bloom * 0.4})`;
+
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.bezierCurveTo(-width * 1.1, -length * 0.3, -width * 0.9, -length * 0.85, 0, -length);
+        ctx.bezierCurveTo(width * 0.9, -length * 0.85, width * 1.1, -length * 0.3, 0, 0);
+        ctx.fill();
+
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = `hsla(${hue + 15}, ${sat}%, ${light + 15}%, 0.25)`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, -length * 0.85);
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+    // 2. ROSE (Deep Velvet Layered Spiral Petals)
+    drawRose(ctx, scale, bloom, windAngle) {
+        const adjustedScale = scale * (0.95 + bloom * 0.28);
+        const hue = 350;
+        const sat = 90;
+        const light = 48;
+
+        const maxR = 68 * adjustedScale;
+        const layers = 5;
+
+        // Outer layers to inner tight bud
+        for (let l = layers; l >= 1; l--) {
+            const layerBloom = Math.min(1, bloom * (1.3 - l * 0.15));
+            const petalCount = 3 + l;
+            const radius = (maxR * (l / layers)) * (0.4 + layerBloom * 0.6);
+
+            for (let i = 0; i < petalCount; i++) {
+                const angle = (i / petalCount) * Math.PI * 2 + (l * 0.8) + (windAngle * 0.05);
+                const flutter = this.noise.get(this.time * 0.8 + i, l) * 0.08 * layerBloom;
+
+                ctx.save();
+                ctx.rotate(angle + flutter);
+                ctx.translate(0, -radius * 0.45);
+
+                const pw = radius * 0.65 * (0.5 + layerBloom * 0.5);
+                const ph = radius * 0.75 * (0.6 + layerBloom * 0.4);
+
+                const grad = ctx.createRadialGradient(0, 0, 2, 0, 0, ph);
+                grad.addColorStop(0, `hsla(${hue + 10}, ${sat}%, ${light + 18}%, 0.95)`);
+                grad.addColorStop(0.65, `hsla(${hue}, ${sat}%, ${light}%, 0.9)`);
+                grad.addColorStop(1, `hsla(${hue - 15}, ${sat + 5}%, ${light - 16}%, 0.95)`);
+
+                ctx.fillStyle = grad;
+                ctx.shadowBlur = 10 + bloom * 12;
+                ctx.shadowColor = `hsla(${hue}, 100%, 60%, 0.35)`;
+
+                ctx.beginPath();
+                ctx.ellipse(0, 0, pw, ph, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Velvety petal curl highlight
+                ctx.strokeStyle = `hsla(${hue + 15}, 100%, 78%, ${0.25 + layerBloom * 0.25})`;
+                ctx.lineWidth = 1.2;
+                ctx.beginPath();
+                ctx.arc(0, -ph * 0.4, pw * 0.8, Math.PI * 0.8, Math.PI * 0.2, true);
+                ctx.stroke();
+
+                ctx.restore();
+            }
+        }
+
+        // Deep Rose Core Bud
+        ctx.save();
+        const coreGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, 16 * adjustedScale);
+        coreGrad.addColorStop(0, `hsla(${hue - 10}, 100%, 25%, 1)`);
+        coreGrad.addColorStop(1, `hsla(${hue}, 90%, 45%, 0.8)`);
+        ctx.fillStyle = coreGrad;
+        ctx.beginPath();
+        ctx.arc(0, 0, 14 * adjustedScale * (1 - bloom * 0.3), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // 3. LOTUS (Sacred Radiant Petals & Golden Center Seed Pod)
+    drawLotus(ctx, scale, bloom, windAngle) {
+console.log("MediaPipe tracking and anchor ready.");
