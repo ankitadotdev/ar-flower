@@ -67,10 +67,17 @@
                 </button>
 
                 <!-- Hands-Free Photo Signals Toggle & Drawer -->
-                
+                <button class="icon-btn active-handsfree" id="handsFreeBtn" title="Hands-Free Photo Signals (Gestures, Hold Pose, Voice)">
+                    <span class="btn-icon">🪄</span>
+                    <span class="btn-text">Hands-Free</span>
+                    <span class="status-pulse-dot"></span>
+                </button>
 
                 <!-- Self-Timer Quick Toggle -->
-                
+                <button class="icon-btn" id="timerToggleBtn" title="Self-Timer: Off / 3s / 5s / 10s">
+                    <span class="btn-icon">⏱️</span>
+                    <span class="btn-text" id="timerLabel">3s</span>
+                </button>
 
                 <!-- Snapshot Capture -->
                 <button class="icon-btn primary-action" id="snapshotBtn" title="Take AR Photo">
@@ -91,6 +98,118 @@
         </header>
 
         <!-- Hands-Free Photo Controls Drawer -->
+        <div class="handsfree-drawer" id="handsFreeDrawer">
+            <div class="drawer-header">
+                <h3>🪄 Hands-Free Photo Signals</h3>
+                <button class="drawer-close" id="handsFreeClose">✕</button>
+            </div>
+            <p class="drawer-subtitle">Click photos effortlessly without touching anything while growing your flowers!</p>
+
+            <div class="hf-option" data-target="toggleGestureTrigger">
+                <div class="hf-info">
+                    <span class="hf-icon">✌️</span>
+                    <div>
+                        <strong>Peace Sign ✌️ (Hold 0.8s)</strong>
+                        <p>Show ✌️ peace sign to start lock ring. Classic, fast & reliable!</p>
+                    </div>
+                </div>
+                <label class="switch-wrapper" for="toggleGestureTrigger">
+                    <input type="checkbox" id="toggleGestureTrigger" checked>
+                    <span class="switch-slider"></span>
+                </label>
+            </div>
+
+            <div class="hf-option" data-target="toggleCameraFrame">
+                <div class="hf-info">
+                    <span class="hf-icon">👆</span>
+                    <div>
+                        <strong>"L" Sign / Frame 👆 (1 or 2 Hands)</strong>
+                        <p>Make an "L" with thumb + index (on one hand or both) to snap</p>
+                    </div>
+                </div>
+                <label class="switch-wrapper" for="toggleCameraFrame">
+                    <input type="checkbox" id="toggleCameraFrame" checked>
+                    <span class="switch-slider"></span>
+                </label>
+            </div>
+
+            <div class="hf-option" data-target="toggleHeartGesture">
+                <div class="hf-info">
+                    <span class="hf-icon">🫶</span>
+                    <div>
+                        <strong>Two-Hand Heart (🫶 Dono Haath Milaayein)</strong>
+                        <p>Bring both hands together touching index tips and thumbs in a heart</p>
+                    </div>
+                </div>
+                <label class="switch-wrapper" for="toggleHeartGesture">
+                    <input type="checkbox" id="toggleHeartGesture" checked>
+                    <span class="switch-slider"></span>
+                </label>
+            </div>
+
+            <div class="hf-option" data-target="toggleOpenPalm">
+                <div class="hf-info">
+                    <span class="hf-icon">🖐️</span>
+                    <div>
+                        <strong>Open Palm 🖐️ (Khuli Hatheli Dikhayein)</strong>
+                        <p>Camera ke aage khula haath (5 ungliya khuli) 0.8s hold karein — sabse aasan!</p>
+                    </div>
+                </div>
+                <label class="switch-wrapper" for="toggleOpenPalm">
+                    <input type="checkbox" id="toggleOpenPalm" checked>
+                    <span class="switch-slider"></span>
+                </label>
+            </div>
+
+            <div class="hf-option" data-target="toggleVoiceTrigger">
+                <div class="hf-info">
+                    <span class="hf-icon">🎙️</span>
+                    <div>
+                        <strong>Voice Trigger ("Cheese!" / "Photo!")</strong>
+                        <p>Say "Cheese", "Photo", "Smile" or "Khicho" so hands stay 100% free</p>
+                    </div>
+                </div>
+                <label class="switch-wrapper" for="toggleVoiceTrigger">
+                    <input type="checkbox" id="toggleVoiceTrigger">
+                    <span class="switch-slider"></span>
+                </label>
+            </div>
+
+            <div class="hf-option" data-target="togglePoseHold">
+                <div class="hf-info">
+                    <span class="hf-icon">🌸</span>
+                    <div>
+                        <strong>Bloom Pose-Hold (Auto-Snap)</strong>
+                        <p>Auto-snap when holding flower pose (OFF by default to avoid accidental clicks)</p>
+                    </div>
+                </div>
+                <label class="switch-wrapper" for="togglePoseHold">
+                    <input type="checkbox" id="togglePoseHold">
+                    <span class="switch-slider"></span>
+                </label>
+            </div>
+
+            <div class="hf-option timer-row">
+                <div class="hf-info">
+                    <span class="hf-icon">⏱️</span>
+                    <div>
+                        <strong>Countdown Timer</strong>
+                        <p>Delay before taking the photo</p>
+                    </div>
+                </div>
+                <div class="timer-chips" id="timerChips">
+                    <button class="timer-chip" data-timer="0">Off</button>
+                    <button class="timer-chip active" data-timer="3">3s</button>
+                    <button class="timer-chip" data-timer="5">5s</button>
+                    <button class="timer-chip" data-timer="10">10s</button>
+                </div>
+            </div>
+
+            <div class="manual-hint">
+                💡 Tip: Keyboard shortcut — press <strong>Spacebar</strong> anytime to start photo countdown!
+            </div>
+        </div>
+
         <!-- Manual Sliders Drawer (for fallback / mouse control) -->
         <div class="manual-drawer" id="manualDrawer">
             <div class="drawer-header">
@@ -154,6 +273,20 @@
         </div>
 
         <!-- Holographic Countdown HUD Overlay -->
+        <div class="countdown-overlay" id="countdownOverlay">
+            <div class="countdown-card">
+                <div class="countdown-ring-wrap">
+                    <svg class="countdown-svg" viewBox="0 0 140 140">
+                        <circle class="countdown-track" cx="70" cy="70" r="58"></circle>
+                        <circle class="countdown-progress" id="countdownProgress" cx="70" cy="70" r="58"></circle>
+                    </svg>
+                    <div class="countdown-number" id="countdownNumber">3</div>
+                </div>
+                <div class="countdown-source" id="countdownSource">📸 Pose & Smile!</div>
+                <button class="countdown-cancel-btn" id="countdownCancelBtn">✕ Cancel</button>
+            </div>
+        </div>
+
         <!-- Initializing Loading Screen -->
         <div class="loading-overlay" id="loading">
             <div class="loading-card">
