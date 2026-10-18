@@ -2,7 +2,6 @@
   "name": "ar-flower-bloom",
   "version": "1.0.0",
   "description": "AR Flower Bloom — Real-Time Hand Gesture & Procedural Floral System",
-  "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js"
